@@ -925,6 +925,7 @@ el('cancel-run-btn').onclick = () => {
 
 function startSSE(jobId) {
   STATE.currentEventSource?.close();
+  let closed = false;
   const es = new EventSource(`/stream/${jobId}`);
   STATE.currentEventSource = es;
 
@@ -949,13 +950,13 @@ function startSSE(jobId) {
     if (msg.type === 'result') {
       el('progress-bar-fill').style.width = '100%';
       el('progress-label').textContent = 'Complete!';
-      es.close();
+      closed = true; es.close();
       STATE.lastResult = msg.data;
       setTimeout(() => { goToStep(5); renderResults(msg.data); }, 600);
     }
 
     if (msg.type === 'error') {
-      es.close();
+      closed = true; es.close();
       const errMsg  = msg.message  || 'Unknown error';
       const frames  = msg.last_frames || [];
       const fullTb  = msg.traceback  || errMsg;
@@ -984,7 +985,8 @@ function startSSE(jobId) {
   };
 
   es.onerror = () => {
-    es.close();
+    if (closed) return;
+    closed = true; es.close();
     toast('error', 'Connection lost', 'The SSE stream disconnected.', true);
     goToStep(3);
   };
