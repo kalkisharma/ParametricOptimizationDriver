@@ -702,7 +702,7 @@ function validateConfig() {
   const mode = $('.mode-tab.active')?.dataset.mode || 'refinement';
 
   if (inputs.length === 0)  errors.push({ label: 'No input columns assigned',  anchor: '#col-assignment-grid' });
-  if (outputs.length === 0) errors.push({ label: 'No output columns assigned', anchor: '#col-assignment-grid' });
+  if (outputs.length === 0) errors.push({ label: "No output columns assigned — set at least one column's role to 'Output'", anchor: '#col-assignment-grid' });
 
   inputs.forEach(col => {
     const b = bounds[col];
@@ -897,6 +897,8 @@ el('run-btn').onclick = async () => {
     return;
   }
   const payload = buildRunPayload();
+  const runBtn = el('run-btn');
+  runBtn.disabled = true;
 
   goToStep(4);
   unlockStep(5);
@@ -910,15 +912,21 @@ el('run-btn').onclick = async () => {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if (!res.ok) { toast('error', 'Run failed', data.error, true); return; }
+    if (!res.ok) {
+      toast('error', 'Run failed', data.error, true);
+      runBtn.disabled = false;
+      return;
+    }
     startSSE(data.job_id);
   } catch(e) {
     toast('error', 'Run error', e.message, true);
+    runBtn.disabled = false;
   }
 };
 
 el('cancel-run-btn').onclick = () => {
   STATE.currentEventSource?.close();
+  el('run-btn').disabled = false;
   goToStep(3);
   toast('warning', 'Run cancelled');
 };
@@ -957,6 +965,7 @@ function startSSE(jobId) {
 
     if (msg.type === 'error') {
       closed = true; es.close();
+      el('run-btn').disabled = false;
       const errMsg  = msg.message  || 'Unknown error';
       const frames  = msg.last_frames || [];
       const fullTb  = msg.traceback  || errMsg;
@@ -987,6 +996,7 @@ function startSSE(jobId) {
   es.onerror = () => {
     if (closed) return;
     closed = true; es.close();
+    el('run-btn').disabled = false;
     toast('error', 'Connection lost', 'The SSE stream disconnected.', true);
     goToStep(3);
   };

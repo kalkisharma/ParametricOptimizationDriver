@@ -183,10 +183,10 @@ def _run_pipeline(df, config, msg_queue, job_id):
 
     # Cache surrogate object separately (not JSON-serialisable — kept in memory only)
     surrogate_obj = result.pop("_surrogate", None)
+    emit("result", "Pipeline complete", data=result)  # emit before re-adding non-serialisable obj
     _jobs[job_id]["result"] = result
     if surrogate_obj is not None:
         _jobs[job_id]["result"]["_surrogate"] = surrogate_obj
-    emit("result", "Pipeline complete", data=result)
 
 
 # ---------------------------------------------------------------------------
