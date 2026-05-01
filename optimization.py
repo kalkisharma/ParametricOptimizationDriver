@@ -406,6 +406,7 @@ def run_refinement(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
         "mode": "refinement",
         "convergence": None,
         "unc_axes": {"x": x_ax, "y": y_ax},
+        "_surrogate": surrogate,
     }
 
 
@@ -516,4 +517,5 @@ def run_optimization(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
             "converged": converged,
         },
         "unc_axes": {"x": x_ax, "y": y_ax},
+        "_surrogate": surrogate,
     }

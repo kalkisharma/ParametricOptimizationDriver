@@ -162,7 +162,11 @@ def _run_pipeline(df, config, msg_queue, job_id):
     else:
         result = run_optimization(df, config, emit)
 
+    # Cache surrogate object separately (not JSON-serialisable — kept in memory only)
+    surrogate_obj = result.pop("_surrogate", None)
     _jobs[job_id]["result"] = result
+    if surrogate_obj is not None:
+        _jobs[job_id]["result"]["_surrogate"] = surrogate_obj
     emit("result", "Pipeline complete", data=result)
 
 
@@ -196,6 +200,42 @@ def stream(job_id):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Live row re-prediction (for editable suggestions table)
+# ---------------------------------------------------------------------------
+
+@app.route("/predict_row", methods=["POST"])
+def predict_row():
+    payload = request.get_json(force=True)
+    job_id = payload.get("job_id")
+    x_row = payload.get("x_row")
+
+    if not job_id or x_row is None:
+        return jsonify({"error": "job_id and x_row required"}), 400
+
+    job = _jobs.get(job_id)
+    if not job or not job.get("result"):
+        return jsonify({"error": "No fitted model for this job"}), 404
+
+    result = job["result"]
+    surrogate = result.get("_surrogate")
+    if surrogate is None:
+        return jsonify({"error": "Surrogate not cached for this job"}), 404
+
+    import numpy as np
+    x = np.array(x_row, dtype=float).reshape(1, -1)
+    means, stds = surrogate.predict_with_std(x)
+    predictions = {}
+    for j, col in enumerate(surrogate.output_cols):
+        mu = float(means[0, j])
+        sigma = float(stds[0, j])
+        predictions[f"pred_{col}"] = round(mu, 6)
+        predictions[f"pred_{col}_lower"] = round(mu - 2 * sigma, 6)
+        predictions[f"pred_{col}_upper"] = round(mu + 2 * sigma, 6)
+
+    return jsonify({"predictions": predictions})
 
 
 # ---------------------------------------------------------------------------
