@@ -1,7 +1,7 @@
 # Parametric Optimization Driver — Design Progress
 
-**Date:** 2026-04-30  
-**Status:** v1.0 complete — all 12 phases implemented and committed
+**Date:** 2026-05-01  
+**Status:** v1.1 — post-launch bug fixes and UX improvements in progress
 
 ---
 
@@ -206,6 +206,8 @@ ParametricOptimizationDriver/
 | 11 | Tests: full pytest suite, error paths, golden outputs, CI workflow | ✅ Complete |
 | 12 | Documentation: complete README with constraint syntax reference | ✅ Complete |
 | 13 | UX: enhanced error reporting — inline field errors, expandable banner, structured pipeline error toast | ✅ Complete |
+| 14 | Bug fixes: SSE JSON crash, run button double-click, scatter_matrix Plotly crash, numpy type serialization | ✅ Complete |
+| 15 | UX: run button first-click fix, responsive charts, dark hover labels, contextual tooltip system | ✅ Complete |
 
 ---
 
@@ -221,6 +223,38 @@ ParametricOptimizationDriver/
 - New validation checks: objective column not selected (optimization mode), constraint missing limit/target value, integer bounds must be whole numbers
 - Pipeline error toast shows plain-English exception message + "▼ Show details" (last 3 stack frames + full traceback) + "Download log" (saves `error_log.txt` with traceback and config snapshot)
 - `app.py`: structured SSE error payload (`message`, `traceback`, `last_frames`, `config_snapshot`); basic payload validation in `/run` before thread spawn
+
+### Bug Fixes & UX Improvements (2026-05-01)
+
+**SSE pipeline crash — SurrogateModel not JSON serializable**
+- Root cause: `result` dict (passed by reference into SSE queue) was mutated by re-adding `_surrogate` before `json.dumps` ran in the web thread — race condition.
+- Fix: surrogate stored at `_jobs[job_id]["_surrogate"]` (separate key, never inside `result`). `predict_row` updated to read from `job["_surrogate"]`.
+
+**Plotly scatter_matrix crash — `ValueError: Invalid value`**
+- Root cause: `px.scatter_matrix()` called without `template=`, triggering a broken symbol property in the ambient Anaconda default template.
+- Fix: added `template="plotly"` explicitly.
+
+**SSE generator hardening**
+- Added `_SafeEncoder` (JSONEncoder subclass) converting `np.integer`, `np.floating`, `np.bool_`, `np.ndarray` to plain Python types.
+- Wrapped `json.dumps` in try/except inside `generate()` — serialization failures now emit a structured error SSE event instead of silently dropping the connection.
+
+**Run button first-click silent fail**
+- Root cause: `goToStep(4)` called before `unlockStep(4)`; guard `if (n > STATE.maxUnlockedStep)` caused silent return.
+- Fix: `unlockStep(4)` added before `goToStep(4)`.
+
+**Run button double-submit**
+- Button disabled immediately on click; re-enabled on pipeline error, SSE disconnect, or cancel.
+
+**Chart improvements**
+- `{responsive: true}` added to all `Plotly.react` calls — charts resize with browser window.
+- Scatter matrix: dynamic height (`max(500, n_cols × 120)`), larger markers (6 px), explicit font size.
+- Scatter matrix promoted to full-width (`chart-card wide`) in results grid.
+- Dark `hoverlabel` added to all charts (`bgcolor: #1e1e3a`, white text) — fixes white popup on dark theme.
+
+**Contextual tooltip system**
+- Lightweight floating tooltip engine in `main.js` — single `#tooltip-box` div, positioned on `mousemove`, triggered by `data-tip` attribute.
+- CSS: `[data-tip]` elements get dotted underline + `cursor: help`.
+- Tooltips (plain English + formula where relevant) on: column role select, integer checkbox, bounds labels, mode buttons, LOO R² / RMSE headers, Sobol S₁ title, Convergence title, Scatter Matrix title, Uncertainty Map title.
 
 ---
 
