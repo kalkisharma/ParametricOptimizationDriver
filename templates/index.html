@@ -1,1 +1,396 @@
-<!-- placeholder — built in Phase 2 -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parametric Optimization Driver</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" defer></script>
+  <script src="/static/js/main.js" defer></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Top bar ───────────────────────────────────────────── -->
+  <header id="topbar">
+    <span class="logo">⬡ Parametric Optimization Driver</span>
+    <span class="spacer"></span>
+    <button id="notif-btn" title="Notification history">🔔</button>
+    <button id="theme-toggle" title="Toggle dark/light mode">☀️</button>
+  </header>
+
+  <!-- ── Notification history drawer ──────────────────────── -->
+  <div id="notif-drawer"></div>
+
+  <!-- ── Stepper ───────────────────────────────────────────── -->
+  <nav id="stepper" aria-label="Workflow steps">
+    <div class="step active" data-step="1" id="step-indicator-1">
+      <span class="step-num">1</span>Upload
+    </div>
+    <div class="step-connector" id="connector-1-2"></div>
+    <div class="step locked" data-step="2" id="step-indicator-2">
+      <span class="step-num">2</span>Preprocess
+    </div>
+    <div class="step-connector" id="connector-2-3"></div>
+    <div class="step locked" data-step="3" id="step-indicator-3">
+      <span class="step-num">3</span>Configure
+    </div>
+    <div class="step-connector" id="connector-3-4"></div>
+    <div class="step locked" data-step="4" id="step-indicator-4">
+      <span class="step-num">4</span>Run
+    </div>
+    <div class="step-connector" id="connector-4-5"></div>
+    <div class="step locked" data-step="5" id="step-indicator-5">
+      <span class="step-num">5</span>Results
+    </div>
+  </nav>
+
+  <!-- ── Toast container ──────────────────────────────────── -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- ── Row detail sidebar ───────────────────────────────── -->
+  <div id="row-sidebar">
+    <button id="sidebar-close" title="Close">✕</button>
+    <h4>Row Details</h4>
+    <div id="sidebar-content"></div>
+  </div>
+
+  <!-- ── Main content ─────────────────────────────────────── -->
+  <main id="main">
+
+    <!-- ===================================================
+         STEP 1 — UPLOAD
+         =================================================== -->
+    <section class="step-panel active" id="panel-1">
+
+      <!-- Empty state -->
+      <div id="empty-state">
+        <h2>CFD Optimization Driver</h2>
+        <p>
+          Upload your simulation results CSV to get started. The tool fits a Gaussian Process
+          surrogate to your data and suggests the next best input conditions to run —
+          either to fill gaps in the design space, or to optimize an objective subject to constraints.
+        </p>
+
+        <label for="file-input">
+          <div id="drop-zone">
+            <div class="drop-icon">📂</div>
+            <div class="drop-label">Drop your CSV here, or click to browse</div>
+            <div class="drop-sub">One row per simulation run &nbsp;·&nbsp; Any mix of inputs and outputs</div>
+          </div>
+        </label>
+        <input type="file" id="file-input" accept=".csv">
+
+        <button class="btn btn-sample" id="sample-btn">Try with sample data</button>
+
+        <p class="text-muted" style="max-width:380px">
+          No data yet? Use <strong>cold-start mode</strong> after uploading a header-only CSV
+          to generate a Latin Hypercube initial design.
+        </p>
+      </div>
+
+      <!-- Post-upload: file info + preview (hidden until upload) -->
+      <div id="upload-result" class="hidden">
+        <div class="card">
+          <div class="card-title">Uploaded file</div>
+          <div class="flex gap-8 items-center mt-8 flex-wrap">
+            <span id="upload-filename" class="text-mono"></span>
+            <span id="upload-rowcol" class="text-muted"></span>
+            <button class="btn btn-secondary" id="reupload-btn" style="margin-left:auto">⬆ Re-upload</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Data preview <span class="text-muted">(first 10 rows)</span></div>
+          <div class="preview-table-wrapper">
+            <table class="preview-table" id="preview-table"></table>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; margin-top:8px">
+          <button class="btn btn-primary" id="to-preprocess-btn">Next: Preprocess →</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================================================
+         STEP 2 — PREPROCESS
+         =================================================== -->
+    <section class="step-panel" id="panel-2">
+      <div class="card">
+        <div class="card-title">Outlier Detection</div>
+        <p class="text-muted mt-8">
+          Rows flagged by IQR or Isolation Forest are highlighted below. Toggle inclusion before
+          fitting the surrogate. Excluded rows are still exported for reference.
+        </p>
+        <div id="outlier-chart" style="margin-top:16px;min-height:300px"></div>
+        <div class="flex gap-8 items-center mt-16 flex-wrap">
+          <span id="outlier-summary" class="text-muted"></span>
+          <button class="btn btn-secondary" id="export-outliers-btn">⬇ Export outlier rows</button>
+          <button class="btn btn-secondary" id="include-all-btn">Include all</button>
+          <button class="btn btn-secondary" id="exclude-flagged-btn">Exclude all flagged</button>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; margin-top:8px">
+        <button class="btn btn-secondary" id="back-to-upload-btn">← Back</button>
+        <button class="btn btn-primary" id="to-configure-btn">Next: Configure →</button>
+      </div>
+    </section>
+
+    <!-- ===================================================
+         STEP 3 — CONFIGURE
+         =================================================== -->
+    <section class="step-panel" id="panel-3">
+
+      <!-- Validation error banner -->
+      <div id="config-error-banner">
+        <span>⚠</span>
+        <span id="config-error-count"></span>
+        <span>configuration error(s) — fix before running</span>
+      </div>
+
+      <!-- Config save/load -->
+      <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap">
+        <button class="btn btn-secondary" id="save-config-btn">💾 Save Config</button>
+        <label class="btn btn-secondary" for="load-config-input" style="cursor:pointer">📂 Load Config</label>
+        <input type="file" id="load-config-input" accept=".json" style="display:none">
+      </div>
+
+      <!-- Column assignment -->
+      <div class="card">
+        <div class="card-title">Column Assignment &amp; Bounds</div>
+        <div id="col-assignment-grid"></div>
+      </div>
+
+      <!-- Mode selector -->
+      <div class="card">
+        <div class="card-title">Mode</div>
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="refinement" id="mode-refinement">
+            🔬 Surrogate Refinement
+          </button>
+          <button class="mode-tab" data-mode="optimization" id="mode-optimization">
+            🚀 Optimization
+          </button>
+        </div>
+        <p class="text-muted" id="mode-description">
+          Fills gaps in the design space by targeting regions of highest GP prediction uncertainty.
+          Best used before optimizing to build a reliable global surrogate.
+        </p>
+      </div>
+
+      <!-- Batch size (always visible) -->
+      <div class="card">
+        <div class="card-title">Batch Size</div>
+        <div class="form-row">
+          <div class="form-group" style="max-width:200px">
+            <label for="batch-size">Number of cases to suggest</label>
+            <input type="number" id="batch-size" value="5" min="1" max="50">
+            <span class="field-error" id="err-batch-size">Must be between 1 and 50</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Optimization-only panel (hidden in refinement mode) -->
+      <div id="opt-panel" class="hidden">
+
+        <!-- Objective builder -->
+        <div class="card">
+          <div class="card-title">Objective Function</div>
+          <div id="objective-simple">
+            <div class="form-group" style="max-width:220px">
+              <label for="obj-column">Column to optimize</label>
+              <select id="obj-column"></select>
+            </div>
+            <div class="form-group" style="max-width:140px">
+              <label for="obj-direction">Direction</label>
+              <select id="obj-direction">
+                <option value="maximize">Maximize ↑</option>
+                <option value="minimize">Minimize ↓</option>
+              </select>
+            </div>
+            <div style="align-self:flex-end">
+              <button class="btn btn-ghost" id="toggle-weighted-btn">+ Weighted sum</button>
+            </div>
+          </div>
+
+          <div id="objective-weighted">
+            <p class="text-muted mt-8" style="margin-bottom:10px">
+              Assign a weight to each column. Positive = maximize, negative = minimize.
+            </p>
+            <div id="weight-rows"></div>
+            <button class="btn btn-ghost mt-8" id="toggle-simple-btn">← Simple mode</button>
+          </div>
+        </div>
+
+        <!-- Output constraints -->
+        <div class="card">
+          <div class="card-title">Output Constraints</div>
+          <p class="text-muted" style="margin-bottom:12px">
+            Each constraint defines a condition an output column must satisfy.
+          </p>
+          <div id="constraint-list"></div>
+          <button class="btn btn-secondary mt-8" id="add-constraint-btn">+ Add constraint</button>
+        </div>
+
+        <!-- Input-space constraints (collapsed by default) -->
+        <details class="advanced card" style="padding:0">
+          <summary>Input-Space Constraints (optional)</summary>
+          <div class="advanced-body" style="flex-direction:column; gap:8px">
+            <p class="text-muted">
+              Block physically invalid input combinations. Use Python expressions over input
+              variable names only. Example: <code>chord * twist &lt;= 15.0</code>
+            </p>
+            <div id="input-constraint-list"></div>
+            <button class="btn btn-secondary" id="add-input-constraint-btn">+ Add input constraint</button>
+          </div>
+        </details>
+
+        <!-- Convergence threshold -->
+        <div class="card">
+          <div class="card-title">Convergence Threshold</div>
+          <div class="form-row">
+            <div class="form-group" style="max-width:260px">
+              <label for="convergence-threshold">Max CEI below which to show convergence banner</label>
+              <input type="number" id="convergence-threshold" value="0.01" min="0" step="0.001">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced GP settings -->
+      <details class="advanced card" style="padding:0">
+        <summary>Advanced GP Settings</summary>
+        <div class="advanced-body">
+          <div class="form-group" style="max-width:200px">
+            <label for="gp-kernel">Kernel override</label>
+            <select id="gp-kernel">
+              <option value="auto">Auto (cross-validation)</option>
+              <option value="matern52">Matérn 5/2</option>
+              <option value="rbf">RBF</option>
+            </select>
+          </div>
+          <div class="form-group" style="max-width:160px">
+            <label for="gp-restarts">Optimizer restarts</label>
+            <input type="number" id="gp-restarts" value="5" min="1" max="30">
+          </div>
+          <div class="form-group" style="max-width:200px">
+            <label for="gp-lengthscale">Length scale type</label>
+            <select id="gp-lengthscale">
+              <option value="anisotropic">Anisotropic (per input)</option>
+              <option value="isotropic">Isotropic (shared)</option>
+            </select>
+          </div>
+          <div class="form-group" style="max-width:220px">
+            <label for="dup-threshold">Duplicate filter distance (0–1)</label>
+            <input type="number" id="dup-threshold" value="0.01" min="0" max="0.5" step="0.001">
+          </div>
+        </div>
+      </details>
+
+      <div style="display:flex; justify-content:space-between; margin-top:16px">
+        <button class="btn btn-secondary" id="back-to-preprocess-btn">← Back</button>
+        <button class="btn btn-primary" id="run-btn" disabled>▶ Run</button>
+      </div>
+
+    </section>
+
+    <!-- ===================================================
+         STEP 4 — RUN
+         =================================================== -->
+    <section class="step-panel" id="panel-4">
+      <div id="progress-container">
+        <h2 style="color:var(--text-secondary); font-size:16px; margin-bottom:8px">Running pipeline…</h2>
+        <div id="progress-bar-track">
+          <div id="progress-bar-fill"></div>
+        </div>
+        <div id="progress-label">Initializing…</div>
+        <div style="margin-top:20px">
+          <button class="btn btn-secondary" id="cancel-run-btn">✕ Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================
+         STEP 5 — RESULTS
+         =================================================== -->
+    <section class="step-panel" id="panel-5">
+
+      <!-- Banners (convergence, feasibility mode) -->
+      <div id="result-banners"></div>
+
+      <!-- Diagnostics -->
+      <div class="card">
+        <div class="card-title">Surrogate Diagnostics — Leave-One-Out Accuracy</div>
+        <table class="diag-table">
+          <thead>
+            <tr>
+              <th>Output column</th>
+              <th>LOO R²</th>
+              <th>LOO RMSE</th>
+              <th>Quality</th>
+              <th>Kernel used</th>
+            </tr>
+          </thead>
+          <tbody id="diag-table-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Charts grid -->
+      <div id="results-grid">
+        <div class="card chart-card" id="chart-sensitivity">
+          <div class="card-title">Input Sensitivity (Sobol S₁)</div>
+          <div id="chart-sensitivity-plot" style="min-height:260px"></div>
+        </div>
+        <div class="card chart-card" id="chart-convergence">
+          <div class="card-title">Convergence — Best Feasible Objective</div>
+          <div id="chart-convergence-plot" style="min-height:260px"></div>
+        </div>
+        <div class="card chart-card wide" id="chart-scatter">
+          <div class="card-title">Scatter Matrix</div>
+          <div id="chart-scatter-plot" style="min-height:400px"></div>
+        </div>
+        <div class="card chart-card wide" id="chart-uncertainty">
+          <div class="card-title">
+            Uncertainty Map
+            <span style="float:right; display:flex; gap:8px; align-items:center">
+              <select id="unc-xaxis" style="width:120px;font-size:12px"></select>
+              <select id="unc-yaxis" style="width:120px;font-size:12px"></select>
+            </span>
+          </div>
+          <div id="chart-uncertainty-plot" style="min-height:360px"></div>
+        </div>
+      </div>
+
+      <!-- Suggested cases -->
+      <div class="card mt-16">
+        <div class="card-title" style="display:flex; align-items:center; justify-content:space-between">
+          <span>Suggested Next Cases</span>
+          <div class="flex gap-8">
+            <button class="btn btn-secondary" id="download-csv-btn">⬇ Download next_cases.csv</button>
+            <button class="btn btn-secondary" id="export-report-btn">📄 Export Report (HTML)</button>
+          </div>
+        </div>
+        <p class="text-muted" style="margin-bottom:10px">
+          Input cells are editable — changes trigger a live GP re-check.
+          Yellow = predicted constraint violation.
+        </p>
+        <div id="suggestions-wrapper">
+          <table id="suggestions-table"></table>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; margin-top:16px">
+        <button class="btn btn-secondary" id="back-to-configure-btn">← Back to Configure</button>
+        <button class="btn btn-primary" id="new-session-btn">⬆ Upload new CSV</button>
+      </div>
+
+    </section>
+
+  </main><!-- #main -->
+
+</div><!-- #app -->
+</body>
+</html>
