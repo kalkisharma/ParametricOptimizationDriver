@@ -1,7 +1,7 @@
 # Parametric Optimization Driver — Design Progress
 
 **Date:** 2026-04-30  
-**Status:** Design complete — implementation starting
+**Status:** v1.0 complete — all 12 phases implemented and committed
 
 ---
 
@@ -193,18 +193,18 @@ ParametricOptimizationDriver/
 
 | Phase | Description | Status |
 |---|---|---|
-| 1 | Scaffold: requirements.txt, setup_github.py, README, git init | **Starting** |
-| 2 | Flask skeleton: all routes, SSE endpoint, HTML stepper shell, dark/light CSS | Not started |
-| 3 | Preprocessing: IQR + Isolation Forest, parallel-coords chart | Not started |
-| 4 | Surrogate: GP fit, LOO kernel selection, diagnostics | Not started |
-| 5 | Constraints: constant / expression / table-interp evaluators | Not started |
-| 6 | Acquisition: MaxVariance, CEI, FeasibilitySearch, ξ auto-scaling | Not started |
-| 7 | Sensitivity: Sobol indices via GP Monte Carlo | Not started |
-| 8 | Report export: standalone HTML with embedded charts | Not started |
-| 9 | Optimization orchestration: full pipeline, SSE progress, cold-start LHS | Not started |
-| 10 | Frontend: stepper UX, config JSON, editable table, toasts, all charts | Not started |
-| 11 | Tests: full pytest suite, error paths, golden outputs, CI workflow | Not started |
-| 12 | Documentation: complete README with constraint syntax reference | Not started |
+| 1 | Scaffold: requirements.txt, setup_github.py, README, git init | ✅ Complete |
+| 2 | Flask skeleton: all routes, SSE endpoint, HTML stepper shell, dark/light CSS | ✅ Complete |
+| 3 | Preprocessing: IQR + Isolation Forest, parallel-coords chart | ✅ Complete |
+| 4 | Surrogate: GP fit, LOO kernel selection, diagnostics | ✅ Complete |
+| 5 | Constraints: constant / expression / table-interp evaluators | ✅ Complete |
+| 6 | Acquisition: MaxVariance, CEI, FeasibilitySearch, ξ auto-scaling | ✅ Complete |
+| 7 | Sensitivity: Sobol indices via GP Monte Carlo | ✅ Complete |
+| 8 | Report export: standalone HTML with embedded charts | ✅ Complete |
+| 9 | Optimization orchestration: full pipeline, SSE progress, cold-start LHS | ✅ Complete |
+| 10 | Frontend: stepper UX, config JSON, editable table, toasts, all charts | ✅ Complete |
+| 11 | Tests: full pytest suite, error paths, golden outputs, CI workflow | ✅ Complete |
+| 12 | Documentation: complete README with constraint syntax reference | ✅ Complete |
 
 ---
 

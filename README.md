@@ -187,6 +187,33 @@ python setup_github.py --token YOUR_GITHUB_TOKEN --repo your-repo-name
 
 ---
 
+## Architecture
+
+```
+Browser (Chrome / Edge)
+│
+│  POST /upload ──────────► preprocessing.py
+│                               IQR + Isolation Forest outlier detection
+│                               Returns: column names, preview, outlier mask
+│
+│  POST /run ─────────────► optimization.py
+│  GET  /stream/<job_id>        ├── surrogate.py   (GP fitting, LOO diagnostics)
+│       (SSE progress)          ├── acquisition.py (MaxVariance / CEI / FeasibilitySearch)
+│                               ├── sensitivity.py (Sobol S1 indices)
+│                               └── constraints.py (p_feasible per constraint)
+│
+│  GET  /download/<job_id> ─► next_cases.csv
+│  GET  /export_report/<id> ─► standalone_report.html
+│  POST /predict_row ────────► surrogate.py (live cell re-check)
+│  POST /upload_constraint_table ─► constraints.py (table-interp setup)
+│
+└── static/js/main.js
+        Stepper wizard ①–⑤
+        Plotly charts (scatter matrix, heatmap, Sobol, convergence)
+        Editable suggestions table with live GP re-check
+        Config JSON save/load, toast notifications
+```
+
 ## Project Structure
 
 ```
