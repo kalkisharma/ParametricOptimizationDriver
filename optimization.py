@@ -194,6 +194,7 @@ def _scatter_matrix_json(df: pd.DataFrame, input_cols: list[str], output_cols: l
         df[cols_to_plot],
         dimensions=cols_to_plot,
         color_discrete_sequence=["#5b8ef7"],
+        template="plotly",
     )
     fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=4)
     fig.update_layout(
