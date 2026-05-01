@@ -205,6 +205,22 @@ ParametricOptimizationDriver/
 | 10 | Frontend: stepper UX, config JSON, editable table, toasts, all charts | ✅ Complete |
 | 11 | Tests: full pytest suite, error paths, golden outputs, CI workflow | ✅ Complete |
 | 12 | Documentation: complete README with constraint syntax reference | ✅ Complete |
+| 13 | UX: enhanced error reporting — inline field errors, expandable banner, structured pipeline error toast | ✅ Complete |
+
+---
+
+## Post-v1 Improvements
+
+### Error Reporting (2026-04-30)
+
+**Problem:** Config validation banner showed only an error count with no detail. Pipeline failures showed a raw `ValueError` toast with no actionable context.
+
+**Changes (commit `269b382`):**
+- `validateConfig()` returns `{label, anchor/el}` error objects; banner expands to a scrollable bullet list via "▼ Show" toggle
+- Live min/max bounds validation: red border + inline message fires on every keystroke; Run-click renders all inline field errors and scrolls to the first offending element
+- New validation checks: objective column not selected (optimization mode), constraint missing limit/target value, integer bounds must be whole numbers
+- Pipeline error toast shows plain-English exception message + "▼ Show details" (last 3 stack frames + full traceback) + "Download log" (saves `error_log.txt` with traceback and config snapshot)
+- `app.py`: structured SSE error payload (`message`, `traceback`, `last_frames`, `config_snapshot`); basic payload validation in `/run` before thread spawn
 
 ---
 
