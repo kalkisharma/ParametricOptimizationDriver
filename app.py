@@ -13,8 +13,23 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from flask import Flask, Response, jsonify, render_template, request, send_file
+
+class _SafeEncoder(json.JSONEncoder):
+    """JSON encoder that converts numpy scalars/arrays and falls back gracefully."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return f"<non-serializable:{type(obj).__name__}>"
+
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB upload limit
@@ -207,7 +222,21 @@ def stream(job_id):
                 yield "event: heartbeat\ndata: {}\n\n"
                 continue
 
-            yield f"data: {json.dumps(msg)}\n\n"
+            try:
+                payload = json.dumps(msg, cls=_SafeEncoder)
+            except Exception as exc:
+                # Serialization failed — send a structured error so the UI shows a toast
+                payload = json.dumps({
+                    "type": "error",
+                    "message": f"SSE serialization failed: {exc}",
+                    "traceback": traceback.format_exc(),
+                    "last_frames": [],
+                    "config_snapshot": {},
+                })
+                yield f"data: {payload}\n\n"
+                break
+
+            yield f"data: {payload}\n\n"
             if msg.get("type") in ("done", "error"):
                 break
 
