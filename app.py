@@ -181,12 +181,12 @@ def _run_pipeline(df, config, msg_queue, job_id):
     else:
         result = run_optimization(df, config, emit)
 
-    # Cache surrogate object separately (not JSON-serialisable — kept in memory only)
+    # Store surrogate separately — never put it back into result (dict is passed by reference
+    # into the SSE queue and json.dumps would see the mutation before serialising).
     surrogate_obj = result.pop("_surrogate", None)
-    emit("result", "Pipeline complete", data=result)  # emit before re-adding non-serialisable obj
     _jobs[job_id]["result"] = result
-    if surrogate_obj is not None:
-        _jobs[job_id]["result"]["_surrogate"] = surrogate_obj
+    _jobs[job_id]["_surrogate"] = surrogate_obj  # separate key, never touches result dict
+    emit("result", "Pipeline complete", data=result)
 
 
 # ---------------------------------------------------------------------------
@@ -238,8 +238,7 @@ def predict_row():
     if not job or not job.get("result"):
         return jsonify({"error": "No fitted model for this job"}), 404
 
-    result = job["result"]
-    surrogate = result.get("_surrogate")
+    surrogate = job.get("_surrogate")
     if surrogate is None:
         return jsonify({"error": "Surrogate not cached for this job"}), 404
 
