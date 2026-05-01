@@ -23,7 +23,12 @@ const STATE = {
   lastResult: null,
   currentEventSource: null,
   notifHistory: [],
+  lastPayload: null,
 };
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DOM helpers
@@ -69,6 +74,30 @@ function _renderNotifHistory() {
       <div class="notif-time">${n.ts}</div>
     </div>`
   ).join('') || '<div class="notif-item" style="color:var(--text-muted)">No notifications yet.</div>';
+}
+
+function _clearFieldErrors() {
+  $$('.field-error[data-dynamic]').forEach(e => e.remove());
+  $$('.has-error').forEach(e => e.classList.remove('has-error'));
+}
+
+function _renderFieldErrors(errors) {
+  errors.forEach(err => {
+    const target = err.el || (err.anchor ? $(err.anchor) : null);
+    if (!target) return;
+    target.classList.add('has-error');
+    const span = document.createElement('span');
+    span.className = 'field-error';
+    span.dataset.dynamic = '1';
+    span.textContent = err.label;
+    target.insertAdjacentElement('afterend', span);
+  });
+}
+
+function downloadErrorLog(evt, tb, cfg) {
+  evt.preventDefault();
+  const content = `=== TRACEBACK ===\n${tb}\n\n=== CONFIG SNAPSHOT ===\n${JSON.stringify(cfg, null, 2)}`;
+  downloadBlob(content, 'text/plain', 'error_log.txt');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -396,8 +425,31 @@ function buildColumnAssignment() {
       validateConfig();
     });
     card.addEventListener('change', () => { STATE.configDirty = true; validateConfig(); });
+
+    const minInput = card.querySelector('.col-min');
+    const maxInput = card.querySelector('.col-max');
+    [minInput, maxInput].forEach(inp => {
+      inp.addEventListener('input', () => _validateBoundsRow(col, card));
+      inp.addEventListener('blur',  () => _validateBoundsRow(col, card));
+    });
+
     grid.appendChild(card);
   });
+}
+
+function _validateBoundsRow(col, card) {
+  const maxInput = card.querySelector('.col-max');
+  const minV = parseFloat(card.querySelector('.col-min').value);
+  const maxV = parseFloat(maxInput.value);
+  validateConfig();  // updates banner and clears all dynamic errors
+  if (!isNaN(minV) && !isNaN(maxV) && minV >= maxV) {
+    maxInput.classList.add('has-error');
+    const span = document.createElement('span');
+    span.className = 'field-error';
+    span.dataset.dynamic = '1';
+    span.textContent = 'Min must be less than max';
+    maxInput.insertAdjacentElement('afterend', span);
+  }
 }
 
 function getColumnConfig() {
@@ -644,36 +696,83 @@ function getInputConstraints() {
 // Validation
 // ─────────────────────────────────────────────────────────────────────────────
 function validateConfig() {
+  _clearFieldErrors();
   const errors = [];
-  const { inputs, outputs, bounds } = getColumnConfig();
+  const { inputs, outputs, bounds, integerCols } = getColumnConfig();
+  const mode = $('.mode-tab.active')?.dataset.mode || 'refinement';
 
-  if (inputs.length === 0) errors.push('No input columns assigned');
-  if (outputs.length === 0) errors.push('No output columns assigned');
+  if (inputs.length === 0)  errors.push({ label: 'No input columns assigned',  anchor: '#col-assignment-grid' });
+  if (outputs.length === 0) errors.push({ label: 'No output columns assigned', anchor: '#col-assignment-grid' });
 
   inputs.forEach(col => {
     const b = bounds[col];
-    if (b && b.min >= b.max) errors.push(`Bounds for "${col}": min must be less than max`);
+    const card = $(`.col-card[data-col="${CSS.escape(col)}"]`);
+    if (b && b.min >= b.max) {
+      errors.push({ label: `"${col}": min must be less than max`, el: card?.querySelector('.col-max') });
+    }
+    if (integerCols.includes(col) && b && (!Number.isInteger(b.min) || !Number.isInteger(b.max))) {
+      errors.push({ label: `"${col}": integer bounds must be whole numbers`, el: card?.querySelector('.col-min') });
+    }
   });
 
   const batchVal = parseInt(el('batch-size').value);
   if (isNaN(batchVal) || batchVal < 1 || batchVal > 50) {
     el('err-batch-size').classList.add('visible');
-    errors.push('Invalid batch size');
+    errors.push({ label: 'Batch size must be between 1 and 50', anchor: '#batch-size' });
   } else {
     el('err-batch-size').classList.remove('visible');
+  }
+
+  if (mode === 'optimization') {
+    const objCol = el('obj-column')?.value;
+    if (!objCol) errors.push({ label: 'Objective: no column selected', anchor: '#obj-column' });
+
+    $$('.constraint-row').forEach((row, i) => {
+      const colSel = row.querySelector('.c-col');
+      if (!colSel?.value) {
+        errors.push({ label: `Constraint ${i + 1}: no output column selected`, el: colSel });
+      }
+      const ctype = row.querySelector('.c-type')?.value;
+      const ltype = row.querySelector('.c-ltype')?.value;
+      const colName = colSel?.value || `#${i + 1}`;
+      if (ctype !== 'eq' && ltype === 'constant') {
+        const lvalEl = row.querySelector('.c-limit-val');
+        if (!lvalEl?.value || isNaN(parseFloat(lvalEl.value))) {
+          errors.push({ label: `Constraint "${colName}": limit value required`, el: lvalEl });
+        }
+      }
+      if (ctype === 'eq') {
+        const targetEl = row.querySelector('.c-target');
+        if (!targetEl?.value || isNaN(parseFloat(targetEl.value))) {
+          errors.push({ label: `Constraint "${colName}": target value required`, el: targetEl });
+        }
+      }
+    });
   }
 
   const errorBanner = el('config-error-banner');
   const runBtn = el('run-btn');
   if (errors.length > 0) {
     errorBanner.classList.add('visible');
-    el('config-error-count').textContent = errors.length;
+    const listItems = errors.map(e => `<li>${escHtml(e.label)}</li>`).join('');
+    errorBanner.innerHTML = `
+      <div class="banner-error-header">
+        <span>⚠ ${errors.length} configuration error${errors.length > 1 ? 's' : ''} — fix before running</span>
+        <button class="error-toggle-btn" id="config-error-toggle">▼ Show</button>
+      </div>
+      <ul class="config-error-list hidden" id="config-error-list">${listItems}</ul>`;
+    el('config-error-toggle').onclick = function() {
+      const list = el('config-error-list');
+      const nowHidden = list.classList.toggle('hidden');
+      this.textContent = nowHidden ? '▼ Show' : '▲ Hide';
+    };
     runBtn.disabled = true;
   } else {
     errorBanner.classList.remove('visible');
+    errorBanner.innerHTML = '';
     runBtn.disabled = !STATE.jobId;
   }
-  return errors.length === 0;
+  return errors;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -761,7 +860,7 @@ function buildRunPayload() {
   const constraints = getConstraints();
   const inputConstraints = getInputConstraints();
 
-  return {
+  const payload = {
     job_id: STATE.jobId,
     mode,
     input_cols: inputs,
@@ -781,13 +880,22 @@ function buildRunPayload() {
     dup_threshold: parseFloat(el('dup-threshold').value),
     convergence_threshold: parseFloat(el('convergence-threshold').value),
   };
+  STATE.lastPayload = payload;
+  return payload;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Run
 // ─────────────────────────────────────────────────────────────────────────────
 el('run-btn').onclick = async () => {
-  if (!validateConfig()) return;
+  const errors = validateConfig();
+  if (errors.length > 0) {
+    _renderFieldErrors(errors);
+    const first = errors.find(e => e.el || e.anchor);
+    const target = first?.el || (first?.anchor ? $(first.anchor) : null);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
   const payload = buildRunPayload();
 
   goToStep(4);
@@ -848,8 +956,29 @@ function startSSE(jobId) {
 
     if (msg.type === 'error') {
       es.close();
-      const shortMsg = msg.message.split('\n').slice(-2).join(' ');
-      toast('error', 'Pipeline error', shortMsg, true);
+      const errMsg  = msg.message  || 'Unknown error';
+      const frames  = msg.last_frames || [];
+      const fullTb  = msg.traceback  || errMsg;
+      const cfgSnap = msg.config_snapshot || STATE.lastPayload || {};
+
+      const frameHtml = frames.map(f => `<code>${escHtml(f)}</code>`).join('<br>');
+      const tbEncoded = encodeURIComponent(fullTb);
+      const cfgEncoded = encodeURIComponent(JSON.stringify(cfgSnap, null, 2));
+      const detailsHtml = `
+        <div class="error-toggle-row">
+          <button class="error-toggle-btn" onclick="
+            var d=this.nextElementSibling;
+            var h=d.classList.toggle('hidden');
+            this.textContent=h?'▼ Show details':'▲ Hide details';">
+            ▼ Show details
+          </button>
+          <a class="error-download-link" href="#"
+             onclick="downloadErrorLog(event,decodeURIComponent('${tbEncoded}'),JSON.parse(decodeURIComponent('${cfgEncoded}')));return false;">
+            Download log
+          </a>
+        </div>
+        <div class="error-details hidden">${frameHtml}${frameHtml ? '<hr style=\'border-color:var(--border);margin:6px 0\'>' : ''}<pre style='margin:0'>${escHtml(fullTb)}</pre></div>`;
+      toast('error', 'Pipeline error', escHtml(errMsg) + detailsHtml, true);
       goToStep(3);
     }
   };

@@ -716,7 +716,8 @@ details.advanced .advanced-body {
   font-size: 13px;
   margin-bottom: 12px;
 }
-#config-error-banner.visible { display: flex; align-items: center; gap: 8px; }
+#config-error-banner.visible { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.banner-error-header { display: flex; align-items: center; gap: 8px; width: 100%; }
 
 /* --- Data preview table --- */
 .preview-table-wrapper { overflow-x: auto; max-height: 300px; overflow-y: auto; }
@@ -777,6 +778,54 @@ details.advanced .advanced-body {
 }
 
 /* --- Utilities --- */
+/* --- Enhanced error reporting --- */
+input.has-error, select.has-error { border-color: var(--danger) !important; }
+
+.config-error-list {
+  margin: 2px 0 0 4px;
+  padding: 0 0 0 16px;
+  list-style: disc;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.error-details {
+  margin-top: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-surface);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.error-toggle-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.error-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.error-download-link {
+  font-size: 11px;
+  color: var(--accent);
+}
+
 .hidden { display: none !important; }
 .mt-8 { margin-top: 8px; }
 .mt-16 { margin-top: 16px; }

@@ -127,6 +127,14 @@ def run():
     if not csv_path.exists():
         return jsonify({"error": "Data file not found — please re-upload the CSV"}), 404
 
+    mode = payload.get("mode", "refinement")
+    if mode not in ("refinement", "optimization"):
+        return jsonify({"error": f"Invalid mode '{mode}'. Must be 'refinement' or 'optimization'", "field": "mode"}), 400
+    if not payload.get("input_cols"):
+        return jsonify({"error": "At least one input column is required", "field": "input_cols"}), 400
+    if not payload.get("output_cols"):
+        return jsonify({"error": "At least one output column is required", "field": "output_cols"}), 400
+
     # Each job gets its own message queue
     msg_queue: queue.Queue = queue.Queue()
     _jobs[job_id] = {"queue": msg_queue, "result": None, "error": None}
@@ -135,10 +143,21 @@ def run():
         try:
             df = pd.read_csv(csv_path)
             _run_pipeline(df, payload, msg_queue, job_id)
-        except Exception:
-            tb = traceback.format_exc()
-            _jobs[job_id]["error"] = tb
-            msg_queue.put({"type": "error", "message": tb})
+        except Exception as exc:
+            full_tb = traceback.format_exc()
+            _jobs[job_id]["error"] = full_tb
+            frames = traceback.extract_tb(exc.__traceback__)
+            last_frames = [
+                f.filename.replace("\\", "/").split("/")[-1] + f":{f.lineno} in {f.name}"
+                for f in frames[-3:]
+            ]
+            msg_queue.put({
+                "type": "error",
+                "message": str(exc),
+                "traceback": full_tb,
+                "last_frames": last_frames,
+                "config_snapshot": payload,
+            })
         finally:
             msg_queue.put({"type": "done"})
 
