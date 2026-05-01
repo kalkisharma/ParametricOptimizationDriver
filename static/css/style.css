@@ -836,13 +836,13 @@ input.has-error, select.has-error { border-color: var(--danger) !important; }
   position: fixed;
   z-index: 9999;
   max-width: 280px;
-  background: var(--bg-raised);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
-  font-size: 0.78rem;
+  font-size: 0.83rem;
   line-height: 1.5;
-  color: var(--text);
+  color: var(--text-primary);
   pointer-events: none;
   display: none;
   box-shadow: 0 4px 16px rgba(0,0,0,0.45);
