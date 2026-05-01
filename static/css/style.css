@@ -826,6 +826,38 @@ input.has-error, select.has-error { border-color: var(--danger) !important; }
   color: var(--accent);
 }
 
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
+[data-tip] {
+  border-bottom: 1px dotted currentColor;
+  cursor: help;
+}
+
+#tooltip-box {
+  position: fixed;
+  z-index: 9999;
+  max-width: 280px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text);
+  pointer-events: none;
+  display: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+}
+
+#tooltip-box .tip-formula {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--accent);
+  border-top: 1px solid var(--border);
+  padding-top: 5px;
+}
+
+/* ── Utilities ───────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
 .mt-8 { margin-top: 8px; }
 .mt-16 { margin-top: 16px; }

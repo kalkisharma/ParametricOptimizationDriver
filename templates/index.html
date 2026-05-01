@@ -168,10 +168,12 @@
       <div class="card">
         <div class="card-title">Mode</div>
         <div class="mode-tabs">
-          <button class="mode-tab active" data-mode="refinement" id="mode-refinement">
+          <button class="mode-tab active" data-mode="refinement" id="mode-refinement"
+            data-tip="Fills gaps in the design space by targeting regions of highest GP prediction uncertainty. Use this first when your data is sparse.||Strategy: argmax Σ σ²(x) — maximise total GP prediction variance">
             🔬 Surrogate Refinement
           </button>
-          <button class="mode-tab" data-mode="optimization" id="mode-optimization">
+          <button class="mode-tab" data-mode="optimization" id="mode-optimization"
+            data-tip="Suggests conditions most likely to improve your objective while satisfying all constraints. Use once the surrogate is reliable (LOO R² ≥ 0.90).||Strategy: CEI(x) = EI(x) × Π P_feasible(x)">
             🚀 Optimization
           </button>
         </div>
@@ -328,8 +330,8 @@
           <thead>
             <tr>
               <th>Output column</th>
-              <th>LOO R²</th>
-              <th>LOO RMSE</th>
+              <th><span data-tip="Leave-one-out R²: how well the model predicts unseen points. ≥0.95 reliable; 0.80–0.95 fair; &lt;0.80 — add more data before optimising.||R² = 1 − SS_res / SS_tot (leave-one-out cross-validation)">LOO R²</span></th>
+              <th><span data-tip="Average prediction error in the original output units. Lower is better. Compare to the physical tolerance you care about.||RMSE = √( mean( (y_actual − y_LOO_predicted)² ) )">LOO RMSE</span></th>
               <th>Quality</th>
               <th>Kernel used</th>
             </tr>
@@ -341,20 +343,20 @@
       <!-- Charts grid -->
       <div id="results-grid">
         <div class="card chart-card" id="chart-sensitivity">
-          <div class="card-title">Input Sensitivity (Sobol S₁)</div>
+          <div class="card-title"><span data-tip="First-order Sobol index: fraction of output variance explained by each input acting alone. Tall bar = that input drives the output. Bars sum to ≤1 (remainder is from input interactions).||S₁ᵢ = Var[E[Y|Xᵢ]] / Var[Y]  (GP-based Monte Carlo)">Input Sensitivity (Sobol S₁)</span></div>
           <div id="chart-sensitivity-plot" style="min-height:260px"></div>
         </div>
         <div class="card chart-card" id="chart-convergence">
-          <div class="card-title">Convergence — Best Feasible Objective</div>
+          <div class="card-title"><span data-tip="Best feasible objective value found so far, plotted against data row index. A flat tail means the optimizer is converging — further runs are unlikely to improve significantly.">Convergence — Best Feasible Objective</span></div>
           <div id="chart-convergence-plot" style="min-height:260px"></div>
         </div>
         <div class="card chart-card wide" id="chart-scatter">
-          <div class="card-title">Scatter Matrix</div>
+          <div class="card-title"><span data-tip="Pairwise scatter plots of all input and output columns. Colour = GP predicted output value at that point. Click any point to inspect its full row.">Scatter Matrix</span></div>
           <div id="chart-scatter-plot" style="min-height:400px"></div>
         </div>
         <div class="card chart-card wide" id="chart-uncertainty">
           <div class="card-title">
-            Uncertainty Map
+            <span data-tip="GP prediction standard deviation across a 2D slice of the input space. Bright regions = high uncertainty = most informative places to run next. Use the dropdowns to change which two inputs are shown.">Uncertainty Map</span>
             <span style="float:right; display:flex; gap:8px; align-items:center">
               <select id="unc-xaxis" style="width:120px;font-size:12px"></select>
               <select id="unc-yaxis" style="width:120px;font-size:12px"></select>

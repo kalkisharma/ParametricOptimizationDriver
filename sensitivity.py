@@ -96,6 +96,7 @@ def sobol_chart_json(
         legend=dict(orientation="h", y=1.1),
         margin=dict(l=50, r=20, t=40, b=50),
         height=280,
+        hoverlabel=dict(bgcolor="#1e1e3a", font=dict(color="#e4e4f0", size=12), bordercolor="#4a4a7a"),
     )
     fig.update_xaxes(gridcolor="#2e2e52")
     fig.update_yaxes(gridcolor="#2e2e52")

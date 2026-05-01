@@ -31,6 +31,29 @@ function escHtml(s) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tooltip engine  (data-tip="plain text||optional formula")
+// ─────────────────────────────────────────────────────────────────────────────
+const _tipBox = document.createElement('div');
+_tipBox.id = 'tooltip-box';
+document.body.appendChild(_tipBox);
+
+document.addEventListener('mouseover', e => {
+  const target = e.target.closest('[data-tip]');
+  if (!target) { _tipBox.style.display = 'none'; return; }
+  const [plain, formula] = target.dataset.tip.split('||');
+  _tipBox.innerHTML = `<div>${escHtml(plain)}</div>` +
+    (formula ? `<div class="tip-formula">${escHtml(formula)}</div>` : '');
+  _tipBox.style.display = 'block';
+});
+document.addEventListener('mousemove', e => {
+  _tipBox.style.left = (e.clientX + 14) + 'px';
+  _tipBox.style.top  = (e.clientY + 14) + 'px';
+});
+document.addEventListener('mouseout', e => {
+  if (!e.target.closest('[data-tip]')) _tipBox.style.display = 'none';
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DOM helpers
 // ─────────────────────────────────────────────────────────────────────────────
 const $  = (sel) => document.querySelector(sel);
@@ -350,7 +373,7 @@ function renderOutlierChart(rows, cols, flagged) {
   Plotly.react('outlier-chart', [trace], {
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
     font: { color: '#e4e4f0' }, margin: { l: 80, r: 60, t: 20, b: 20 }, height: 300
-  });
+  }, {responsive: true});
 }
 
 el('include-all-btn').onclick = () => { STATE.outlierMask.fill(true); toast('info', 'All rows included'); };
@@ -398,19 +421,21 @@ function buildColumnAssignment() {
       <div class="col-name">${col}</div>
       <div class="col-stats">min ${s.min?.toFixed(3)??'–'} · max ${s.max?.toFixed(3)??'–'} · ${s.nan_count??0} NaN</div>
       <div class="form-row" style="margin:6px 0 0">
-        <select class="col-role" style="flex:1">
+        <select class="col-role" style="flex:1"
+          data-tip="Input: the optimizer suggests values within bounds. Output: the GP surrogate learns to predict it. Ignore: excluded from the model.">
           <option value="input">Input</option>
           <option value="output">Output</option>
           <option value="ignore">Ignore</option>
         </select>
-        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer">
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer"
+          data-tip="Mark this input as integer — suggested values will be rounded to the nearest whole number.">
           <input type="checkbox" class="col-integer"> Integer
         </label>
       </div>
       <div class="bounds-row col-bounds">
-        <label>Min</label>
+        <label data-tip="The optimizer will never suggest values outside these bounds. Pre-filled from your data range — widen them if you want to explore beyond your current data.">Min</label>
         <input type="number" class="col-min" value="${s.min?.toFixed(4)??0}" step="any">
-        <label>Max</label>
+        <label data-tip="The optimizer will never suggest values outside these bounds. Pre-filled from your data range — widen them if you want to explore beyond your current data.">Max</label>
         <input type="number" class="col-max" value="${s.max?.toFixed(4)??1}" step="any">
       </div>`;
     // Show/hide bounds based on role
@@ -900,6 +925,7 @@ el('run-btn').onclick = async () => {
   const runBtn = el('run-btn');
   runBtn.disabled = true;
 
+  unlockStep(4);
   goToStep(4);
   unlockStep(5);
   el('progress-bar-fill').style.width = '5%';
@@ -1070,21 +1096,23 @@ function renderCharts(plots, uncAxes) {
              yaxis: { ...layout.yaxis, gridcolor: gridColor } };
   }
 
+  const plotCfg = {responsive: true};
+
   if (plots.sensitivity) {
     Plotly.react('chart-sensitivity-plot', plots.sensitivity.data,
-      applyTheme(plots.sensitivity.layout));
+      applyTheme(plots.sensitivity.layout), plotCfg);
   }
 
   if (plots.convergence) {
     Plotly.react('chart-convergence-plot', plots.convergence.data,
-      applyTheme(plots.convergence.layout));
+      applyTheme(plots.convergence.layout), plotCfg);
   } else {
     el('chart-convergence').style.display = 'none';
   }
 
   if (plots.scatter_matrix) {
     Plotly.react('chart-scatter-plot', plots.scatter_matrix.data,
-      applyTheme(plots.scatter_matrix.layout));
+      applyTheme(plots.scatter_matrix.layout), plotCfg);
     // Click handler for row sidebar
     el('chart-scatter-plot').on('plotly_click', data => {
       const pt = data.points[0];
@@ -1094,7 +1122,7 @@ function renderCharts(plots, uncAxes) {
 
   if (plots.uncertainty_map) {
     Plotly.react('chart-uncertainty-plot', plots.uncertainty_map.data,
-      applyTheme(plots.uncertainty_map.layout));
+      applyTheme(plots.uncertainty_map.layout), plotCfg);
     el('chart-uncertainty-plot').on('plotly_click', data => {
       const pt = data.points[0];
       if (pt) showRowSidebar({ [uncAxes.x]: pt.x, [uncAxes.y]: pt.y });

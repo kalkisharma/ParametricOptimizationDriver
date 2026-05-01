@@ -190,19 +190,21 @@ def _build_suggestion_records(
 def _scatter_matrix_json(df: pd.DataFrame, input_cols: list[str], output_cols: list[str]) -> dict:
     all_cols = input_cols + output_cols
     cols_to_plot = all_cols[:min(len(all_cols), 8)]  # cap for readability
+    n = len(cols_to_plot)
     fig = px.scatter_matrix(
         df[cols_to_plot],
         dimensions=cols_to_plot,
         color_discrete_sequence=["#5b8ef7"],
         template="plotly",
     )
-    fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=4)
+    fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=6)
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font_color="#e4e4f0",
-        height=420,
-        margin=dict(l=60, r=20, t=20, b=60),
+        font=dict(color="#e4e4f0", size=11),
+        height=max(500, n * 120),
+        margin=dict(l=80, r=20, t=40, b=80),
+        hoverlabel=dict(bgcolor="#1e1e3a", font=dict(color="#e4e4f0", size=12), bordercolor="#4a4a7a"),
     )
     return json.loads(fig.to_json())
 
@@ -252,6 +254,7 @@ def _uncertainty_heatmap_json(
         font_color="#e4e4f0",
         height=360,
         margin=dict(l=60, r=20, t=20, b=50),
+        hoverlabel=dict(bgcolor="#1e1e3a", font=dict(color="#e4e4f0", size=12), bordercolor="#4a4a7a"),
     )
     return json.loads(fig.to_json())
 
@@ -314,6 +317,7 @@ def _convergence_chart_json(
         font_color="#e4e4f0",
         height=260,
         margin=dict(l=60, r=20, t=20, b=50),
+        hoverlabel=dict(bgcolor="#1e1e3a", font=dict(color="#e4e4f0", size=12), bordercolor="#4a4a7a"),
     )
     fig.update_xaxes(gridcolor="#2e2e52")
     fig.update_yaxes(gridcolor="#2e2e52")
