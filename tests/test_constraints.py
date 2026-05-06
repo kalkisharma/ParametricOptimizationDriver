@@ -1,3 +1,13 @@
+# =============================================================================
+# tests/test_constraints.py
+# Parametric Optimization Driver
+# Version: v1.1.3
+# Role: QA Engineer, Security Engineer
+# Last modified: 2026-05-06
+# Description: Tests for constraints.py — all limit types, feasibility
+#              probabilities, and security (AST sandbox, path traversal).
+# =============================================================================
+
 """Tests for constraints.py: all limit types, feasibility probabilities, security."""
 
 import math
@@ -85,11 +95,10 @@ INJECTION_ATTEMPTS = [
     "exec('import os')",
     "open('/etc/passwd').read()",
     "__builtins__['__import__']('os')",
-    # "(lambda: None)()" is intentionally excluded: lambda is a Python keyword,
-    # not a builtin, so it is not blocked by __builtins__={}. The expression
-    # evaluates to None (falsy) and is harmless in isolation. More dangerous
-    # lambda-based class-traversal attacks are covered in
-    # test_input_constraint_class_traversal below.
+    # Gate 4: AST whitelist now blocks lambda (ast.Lambda not in _ALLOWED_EXPR_NODES).
+    "(lambda: None)()",
+    # Gate 4: AST whitelist blocks attribute access (ast.Attribute not allowed).
+    "().__class__.__mro__[-1].__subclasses__()",
     "globals()",
     "locals()",
 ]
@@ -108,16 +117,26 @@ def test_input_constraint_injection():
             evaluate_input_constraint(expr, {"speed": 50.0})
 
 def test_input_constraint_class_traversal():
-    """Lambda-based class hierarchy traversal is documented at Gate 4 as an
-    open CRITICAL finding. This test records that the attack currently succeeds
-    (does NOT raise) so the finding is on record before the fix is applied."""
+    """Gate 4: AST whitelist blocks attribute access (ast.Attribute), so the
+    class-hierarchy traversal attack now raises ValueError before eval() runs."""
     expr = "().__class__.__mro__[-1].__subclasses__()"
-    try:
-        result = evaluate_input_constraint(expr, {"speed": 50.0})
-        # If we reach here, the traversal succeeded — recorded as OPEN CRITICAL
-        assert isinstance(result, (list, bool)), "traversal returned unexpected type"
-    except Exception:
-        pass  # If fixed in a later gate, this becomes the success path
+    with pytest.raises(ValueError, match="disallowed construct"):
+        evaluate_input_constraint(expr, {"speed": 50.0})
+
+
+def test_table_constraint_path_traversal():
+    """Gate 4: Path outside UPLOAD_DIR must raise ValueError — path traversal
+    attempt via a crafted limit_value is rejected before any file is opened."""
+    c = ConstraintDef(
+        col="power", ctype="leq",
+        limit_type="table",
+        limit_value="../../../etc/passwd",
+        table_condition_cols=["speed"],
+        table_limit_col="limit",
+    )
+    row = {"speed": 50.0, "power": 100.0}
+    with pytest.raises(ValueError, match="outside the upload directory"):
+        evaluate_deterministic(row, c)
 
 
 # ─── Feasibility probability ─────────────────────────────────────────────────

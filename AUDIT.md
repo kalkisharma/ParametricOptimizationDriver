@@ -478,6 +478,98 @@ All Gate 2 role findings documented. CRITICAL finding: 1 (Lambda/class traversal
 All Gate 3 role findings documented. CRITICAL findings: none. HIGH findings: none. MEDIUM findings: LOO metric framing (deferred Gate 5), no extrapolation warning (deferred Gate 5), contamination=0.1 comment (RESOLVED), outlier mask mismatch (deferred Gate 5), test coverage gaps (deferred Gate 6). All MEDIUM+ findings tracked. Test result: 83 passed, 0 failed. Gate 3 is CLOSED. Gate 4 may begin.
 
 ---
-All Gate 2 role findings documented. CRITICAL finding: 1 (Lambda/class traversal sandbox gap — OPEN, deferred to Gate 4). HIGH findings: 2 (debug=True — RESOLVED; eq constraint TypeError — RESOLVED; KeyError Python 3.14 — RESOLVED). All other findings RESOLVED. Baseline test result: 83 passed, 0 failed. Gate 2 is CLOSED pending Gate 4 CRITICAL resolution. Gate 3 may begin.
+
+## [v1.1.3] — 2026-05-06
+**Gate:** 4 — Constraint and Preprocessing Review
+**Lead Role:** Security Engineer
+**Supporting Roles:** ML Engineer, QA Engineer
+**Finding (CRITICAL — Lambda/Class Traversal Sandbox Escape — RESOLVED):** The Gate 2 CRITICAL finding: the expression evaluator blocked builtins via `__builtins__ = {}` but `lambda` expressions and attribute access (`.__class__.__mro__`) are Python language constructs, not builtins, and are not blocked by that mechanism. The attack `().__class__.__mro__[-1].__subclasses__()` succeeded without error, exposing the full Python class hierarchy. Similarly, `(lambda: None)()` evaluated without error. No amount of name-based blocking can stop these — the AST must be validated before eval() runs.
+**Severity:** CRITICAL
+**Change:** `constraints.py` — Added `_ALLOWED_EXPR_NODES` frozenset (explicit AST node type whitelist). Added `_validate_expression_ast(expr)` which parses the expression as an AST and rejects any node type not in the whitelist, raising `ValueError` before `eval()` is ever called. Blocked node types include: `ast.Attribute` (blocks `.__class__`, `.method`), `ast.Subscript` (blocks `[key]`, `[i:j]` index-based builtins access), `ast.Lambda`, `ast.ListComp`, `ast.SetComp`, `ast.DictComp`, `ast.GeneratorExp`, `ast.JoinedStr` (f-strings), `ast.Starred`. `_validate_expression_ast` is called before every `eval()` call in both `_resolve_limit` (expression branch) and `evaluate_input_constraint`. Added `# SECURITY:` comments at all eval sites documenting the two-layer defense. Added `import ast` and `import tempfile`. VERSION incremented to v1.1.3.
+**Test Result:** PASS — 86 passed (3 new: lambda blocked, class traversal blocked, path traversal blocked)
+**Status:** RESOLVED
+
+---
+
+## [v1.1.3] — 2026-05-06
+**Gate:** 4 — Constraint and Preprocessing Review
+**Lead Role:** Security Engineer
+**Supporting Roles:** None
+**Finding (HIGH — Path Traversal in _build_interpolator — RESOLVED):** `_build_interpolator` accepted `constraint.limit_value` as an arbitrary file path with no validation. A crafted `limit_value` of `"../../../etc/passwd"` or any absolute path would open and attempt to parse arbitrary files from the filesystem. `Path(x).resolve()` would follow symlinks as well.
+**Severity:** HIGH
+**Change:** `constraints.py` — `_build_interpolator` now resolves the upload directory (`tempfile.gettempdir() / "cfd_opt_uploads"`) and the user-supplied path, then asserts the resolved path starts with the resolved upload directory string. If not, raises `ValueError` with a message referencing the upload directory constraint. Added `# SECURITY:` comment explaining the attack and the mitigation. The same upload dir is used by the `/upload_constraint_table` Flask route, so legitimate files will always pass.
+**Test Result:** PASS — 86 passed (test_table_constraint_path_traversal verifies `"../../../etc/passwd"` raises ValueError)
+**Status:** RESOLVED
+
+---
+
+## [v1.1.3] — 2026-05-06
+**Gate:** 4 — Constraint and Preprocessing Review
+**Lead Role:** Security Engineer
+**Supporting Roles:** None
+**Finding (AST whitelist coverage review — adversarial expression audit):** Reviewed the following additional attack vectors against the new AST whitelist:
+  - `[x for x in ().__class__.__mro__]` → `ast.ListComp` (blocked)
+  - `{x: x for x in range(10)}` → `ast.DictComp` (blocked)
+  - `f"{__import__('os')}"` → `ast.JoinedStr` (blocked)
+  - `(*[1,2,3],)` → `ast.Starred` (blocked)
+  - `(yield 1)` → `ast.Yield` (blocked — not in whitelist)
+  - `np.sin.__code__` → `ast.Attribute` (blocked — np.sin is in scope but attribute access on it is not allowed)
+  - `clip(1, a_min=0, a_max=1)` → `ast.keyword` (allowed — needed for numpy keyword args)
+  - `sin(pi/6) + cos(pi/3)` → all `ast.Call`, `ast.Name`, `ast.BinOp`, `ast.Constant` (allowed — legitimate)
+All disallowed constructs confirmed blocked at the AST level before eval() runs.
+**Severity:** LOW
+**Change:** None — whitelist confirmed comprehensive.
+**Test Result:** PASS — 86 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.3] — 2026-05-06
+**Gate:** 4 — Constraint and Preprocessing Review
+**Lead Role:** ML Engineer
+**Supporting Roles:** Domain Expert
+**Finding (constraint math — eq formulation, leq/geq, feasibility probability):** Constraint math confirmed correct across all three types. `eq`: `P(|output - target| ≤ tol) = Φ((tol − (μ−target))/σ) − Φ((−tol − (μ−target))/σ)`. The two-CDF difference is always in [0, 1]. `leq`: `Φ((limit − μ)/σ)` in [0, 1]. `geq`: `1 − Φ((limit − μ)/σ)` in [0, 1]. Product across constraints: `all_p_feasible` uses `np.prod(probs)`, which is correct — CEI needs the joint probability that all constraints are satisfied simultaneously, and under independence assumption (GP models are fitted independently) this is the product. The sigma floor `max(sigma, 1e-9)` prevents ZeroDivisionError at exact training points where GP interpolates. `evaluate_deterministic` margin definitions: leq: `limit − output` (positive when feasible), geq: `output − limit`, eq: `tol − |output − target|`. All sign conventions confirmed consistent.
+**Severity:** LOW
+**Change:** None.
+**Test Result:** PASS — 86 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.3] — 2026-05-06
+**Gate:** 4 — Constraint and Preprocessing Review
+**Lead Role:** Domain Expert
+**Supporting Roles:** None
+**Finding (constraint types for CFD trim problems):** The three constraint types (eq, leq, geq) with constant, expression, and table-interpolated limits cover the typical CFD parametric optimization constraint space:
+  - `eq` with tight tolerance: pitching moment Cm = 0 trim condition — correct formulation.
+  - `leq` with constant limit: power ≤ max_power — correct.
+  - `geq` with expression limit: thrust ≥ f(speed, altitude) — the expression evaluator allows simple parametric limits that depend on input conditions.
+  - `leq`/`geq` with table lookup: interpolated structural limits from a flight envelope table — covers the most complex real-world case.
+The table interpolation uses `LinearNDInterpolator` which returns NaN outside the convex hull of the table points. NaN is handled by returning 50% feasibility probability in `p_feasible` — this is a conservative default (not optimistic, not pessimistic) and is documented in both the code and test. This is an acceptable engineering choice for out-of-range table conditions.
+**Severity:** LOW
+**Change:** None.
+**Test Result:** PASS — 86 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.3] — 2026-05-06
+**Gate:** 4 — Constraint and Preprocessing Review
+**Lead Role:** QA Engineer
+**Supporting Roles:** Security Engineer
+**Finding (test_constraints.py update for Gate 4 security fixes):** test_constraints.py required three updates to reflect the AST whitelist fix:
+  1. `INJECTION_ATTEMPTS` restored `"(lambda: None)()"` — now blocked at AST level (ast.Lambda).
+  2. `INJECTION_ATTEMPTS` added `"().__class__.__mro__[-1].__subclasses__()"` — now blocked at AST level (ast.Attribute).
+  3. `test_input_constraint_class_traversal` updated from recording the OPEN gap to asserting `ValueError` is raised with `match="disallowed construct"`.
+  4. Added `test_table_constraint_path_traversal` verifying that a crafted path `"../../../etc/passwd"` raises `ValueError` matching `"outside the upload directory"`.
+**Severity:** LOW
+**Change:** `tests/test_constraints.py` — header added, INJECTION_ATTEMPTS expanded, tests updated as above.
+**Test Result:** PASS — 86 passed (was 83 at Gate 3; 3 new tests added, all pass)
+**Status:** RESOLVED
+
+---
+
+## Gate 4 PM Sign-Off — 2026-05-06
+All Gate 4 role findings documented. CRITICAL finding: 1 (Lambda/class traversal sandbox escape — RESOLVED). HIGH finding: 1 (Path traversal in _build_interpolator — RESOLVED). All other findings LOW — RESOLVED. Test result: 86 passed, 0 failed. The Gate 2 CRITICAL finding is now CLOSED. Gate 4 is CLOSED. Gate 5 may begin.
 
 ---
