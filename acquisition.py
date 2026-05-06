@@ -1,7 +1,7 @@
 # =============================================================================
 # acquisition.py
 # Parametric Optimization Driver
-# Version: v1.1.1
+# Version: v1.1.2
 # Role: ML Engineer
 # Last modified: 2026-05-06
 # Description: Acquisition strategies for Bayesian optimization — MaxVariance
@@ -62,17 +62,19 @@ class AcquisitionStrategy(ABC):
 # ---------------------------------------------------------------------------
 
 def _normalize_bounds(bounds: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """Return bounds as list of (lo, hi) tuples."""
+    """Return bounds as a list of (float lo, float hi) tuples."""
     return [(float(lo), float(hi)) for lo, hi in bounds]
 
 
 def _diagonal(bounds: list[tuple[float, float]]) -> float:
+    """Euclidean length of the input-space diagonal (used to normalize distances)."""
     lo = np.array([b[0] for b in bounds])
     hi = np.array([b[1] for b in bounds])
     return float(np.linalg.norm(hi - lo))
 
 
 def _normalize_x(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndarray:
+    """Map x from input space to the unit hypercube [0, 1]^d."""
     lo = np.array([b[0] for b in bounds])
     hi = np.array([b[1] for b in bounds])
     rng = hi - lo
@@ -81,6 +83,7 @@ def _normalize_x(x: np.ndarray, bounds: list[tuple[float, float]]) -> np.ndarray
 
 
 def _is_duplicate(x: np.ndarray, existing: np.ndarray, bounds, threshold: float) -> bool:
+    """Return True if x is within `threshold` (normalized Euclidean) of any point in existing."""
     if len(existing) == 0:
         return False
     diag = _diagonal(bounds)
@@ -93,6 +96,7 @@ def _is_duplicate(x: np.ndarray, existing: np.ndarray, bounds, threshold: float)
 
 
 def _round_integers(x: np.ndarray, integer_dims: list[int] | None) -> np.ndarray:
+    """Round specified dimensions of x to the nearest integer (in-place copy)."""
     if integer_dims:
         x = x.copy()
         for d in integer_dims:
@@ -101,6 +105,7 @@ def _round_integers(x: np.ndarray, integer_dims: list[int] | None) -> np.ndarray
 
 
 def _check_input_constraints(x: np.ndarray, input_cols: list[str], exprs: list[str]) -> bool:
+    """Return True if x satisfies all input-space constraint expressions. Fails safe (False) on errors."""
     if not exprs:
         return True
     from constraints import evaluate_input_constraint
@@ -330,6 +335,13 @@ class ConstrainedEIAcquisition(AcquisitionStrategy):
     def _best_feasible(
         self, X, Y, constraints, input_cols, output_cols, objective_spec
     ) -> tuple[float, np.ndarray]:
+        """
+        Identify the best feasible objective value in the training data.
+
+        Returns (best_f, feasible_mask) where best_f is the maximum signed objective
+        over all feasible training rows and feasible_mask is a boolean array.
+        Returns (-inf, all-False) when no feasible point exists.
+        """
         if Y is None or len(Y) == 0:
             return -np.inf, np.zeros(len(X), dtype=bool)
 
@@ -377,6 +389,16 @@ class ConstrainedEIAcquisition(AcquisitionStrategy):
         self, x_flat, row_vars, mu_dict, sigma_dict,
         best_f, xi, objective_spec, input_cols, output_cols
     ) -> float:
+        """
+        Compute Expected Improvement at x, handling three objective cases:
+        - Input column: exact value (no GP uncertainty), EI reduces to step function
+        - Output column: standard EI using GP (mu, sigma)
+        - Weighted sum: combined EI using linear combination of GP predictions
+
+        Sign convention: both best_f and the objective mu are multiplied by `sign`
+        (1.0 for maximize, -1.0 for minimize) so EI always measures improvement
+        toward a higher signed value.
+        """
         obj_col = objective_spec.get("column")
         direction = objective_spec.get("direction", "maximize")
         sign = 1.0 if direction == "maximize" else -1.0

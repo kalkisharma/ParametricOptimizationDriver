@@ -1,7 +1,7 @@
 # =============================================================================
 # sensitivity.py
 # Parametric Optimization Driver
-# Version: v1.1.1
+# Version: v1.1.2
 # Role: Scientific Python Developer
 # Last modified: 2026-05-06
 # Description: First-order Sobol sensitivity indices via GP-surrogate Monte Carlo
@@ -33,6 +33,12 @@ def sobol_first_order(
     Estimate first-order Sobol sensitivity indices S1 for one output column.
     Uses the Saltelli (2002) estimator with n_samples base samples.
     Returns {input_col: S1_value}.
+
+    Sample size guidance: n_samples=1024 is adequate for 2–5 inputs on a
+    well-fitted GP surrogate. For 10+ inputs, variance of the estimator
+    increases and n_samples ≥ 4096 is recommended. The negative-value clip
+    (max(0, S1_raw)) can bias the sum above 1.0 with small samples; this is
+    expected and not an algorithmic error.
     """
     rng = np.random.default_rng(seed)
     n_inputs = len(bounds)

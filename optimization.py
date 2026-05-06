@@ -1,7 +1,7 @@
 # =============================================================================
 # optimization.py
 # Parametric Optimization Driver
-# Version: v1.1.1
+# Version: v1.1.2
 # Role: ML Engineer
 # Last modified: 2026-05-06
 # Description: Pipeline orchestration for surrogate refinement (MaxVariance) and
@@ -49,6 +49,7 @@ from surrogate import SurrogateModel
 # ---------------------------------------------------------------------------
 
 def _parse_bounds(config: dict, input_cols: list[str], df: pd.DataFrame) -> list[tuple]:
+    """Extract (lo, hi) bounds for each input column from config, falling back to data min/max."""
     bounds_cfg = config.get("bounds", {})
     bounds = []
     for col in input_cols:
@@ -61,11 +62,13 @@ def _parse_bounds(config: dict, input_cols: list[str], df: pd.DataFrame) -> list
 
 
 def _parse_integer_dims(config: dict, input_cols: list[str]) -> list[int]:
+    """Return list of dimension indices that should be rounded to integer values."""
     integer_cols = set(config.get("integer_cols", []))
     return [i for i, col in enumerate(input_cols) if col in integer_cols]
 
 
 def _parse_constraints(config: dict) -> list[ConstraintDef]:
+    """Deserialize the constraint list from the config dict into ConstraintDef objects."""
     raw = config.get("constraints", [])
     result = []
     for c in raw:
@@ -83,6 +86,7 @@ def _parse_constraints(config: dict) -> list[ConstraintDef]:
 
 
 def _parse_gp_settings(config: dict) -> dict:
+    """Extract GP hyperparameter settings from config with production defaults."""
     gp = config.get("gp_settings", {})
     return {
         "kernel": gp.get("kernel", "auto"),
@@ -133,6 +137,7 @@ def _fit_surrogate(
     emit: Callable,
     total_steps: int = 6,
 ) -> SurrogateModel:
+    """Fit a SurrogateModel on df, emitting per-output SSE progress messages."""
     emit("progress", f"Fitting surrogate (0/{len(output_cols)} outputs)…", step=2, total=total_steps)
 
     X = df[input_cols].values.astype(float)
@@ -165,6 +170,10 @@ def _build_suggestion_records(
     output_cols: list[str],
     objective_spec: dict,
 ) -> list[dict]:
+    """
+    Convert suggested input array to output records including GP predictions,
+    ±2σ confidence intervals, per-constraint feasibility probabilities, and timestamp.
+    """
     means, stds = surrogate.predict_with_std(suggested_X)
     records = []
     ts = datetime.now(timezone.utc).isoformat()
@@ -200,6 +209,7 @@ def _build_suggestion_records(
 # ---------------------------------------------------------------------------
 
 def _scatter_matrix_json(df: pd.DataFrame, input_cols: list[str], output_cols: list[str]) -> dict:
+    """Return Plotly scatter-matrix JSON for all input+output columns (capped at 8 for readability)."""
     all_cols = input_cols + output_cols
     cols_to_plot = all_cols[:min(len(all_cols), 8)]  # cap for readability
     n = len(cols_to_plot)
@@ -228,6 +238,10 @@ def _uncertainty_heatmap_json(
     y_col: str,
     n_grid: int = 40,
 ) -> dict:
+    """
+    Return Plotly heatmap JSON showing summed GP std (Σσ) on a 2D slice of input space.
+    All inputs not on the displayed axes are fixed at their midpoint.
+    """
     input_cols = surrogate.input_cols
     xi = input_cols.index(x_col)
     yi = input_cols.index(y_col)
@@ -341,6 +355,10 @@ def _convergence_chart_json(
 # ---------------------------------------------------------------------------
 
 def _lhs_design(bounds: list[tuple], n: int, integer_dims: list[int]) -> np.ndarray:
+    """
+    Generate a Latin Hypercube Sampling design covering the full input bounds.
+    Integer dimensions are rounded to the nearest whole number post-scaling.
+    """
     from scipy.stats.qmc import LatinHypercube, scale
     sampler = LatinHypercube(d=len(bounds), seed=42)
     sample = sampler.random(n=n)
@@ -357,6 +375,13 @@ def _lhs_design(bounds: list[tuple], n: int, integer_dims: list[int]) -> np.ndar
 # ---------------------------------------------------------------------------
 
 def run_refinement(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
+    """
+    Surrogate refinement pipeline: fit GP, run MaxVariance acquisition, build charts.
+
+    Returns a result dict with: suggestions, plots (scatter_matrix, uncertainty_map,
+    sensitivity), diagnostics (LOO R²/RMSE per output), nan_info, mode, and _surrogate.
+    Raises ValueError if not enough data remains after cleaning.
+    """
     input_cols: list[str] = config["input_cols"]
     output_cols: list[str] = config["output_cols"]
     n_suggestions: int = int(config.get("n_suggestions", 5))
@@ -432,6 +457,14 @@ def run_refinement(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
 # ---------------------------------------------------------------------------
 
 def run_optimization(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
+    """
+    Constrained Bayesian optimization pipeline: fit GP, run CEI acquisition
+    (or FeasibilitySearch if no feasible point exists), check convergence, build charts.
+
+    Returns a result dict with: suggestions, plots (scatter_matrix, uncertainty_map,
+    sensitivity, convergence), diagnostics, nan_info, mode, feasibility_mode,
+    convergence info, and _surrogate.
+    """
     input_cols: list[str] = config["input_cols"]
     output_cols: list[str] = config["output_cols"]
     n_suggestions: int = int(config.get("n_suggestions", 5))

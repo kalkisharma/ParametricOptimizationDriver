@@ -1,7 +1,7 @@
 # =============================================================================
 # preprocessing.py
 # Parametric Optimization Driver
-# Version: v1.1.1
+# Version: v1.1.2
 # Role: Scientific Python Developer
 # Last modified: 2026-05-06
 # Description: Data preprocessing — outlier detection using the union of IQR and
@@ -44,7 +44,12 @@ def detect_outliers(df: pd.DataFrame, cols: list[str]) -> np.ndarray:
             lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
             mask_iqr |= (s < lo) | (s > hi)
 
-    # Isolation Forest on rows that have no NaN
+    # Isolation Forest on rows that have no NaN.
+    # contamination=0.1 tells the model to expect ~10% of rows to be anomalies.
+    # This is a conservative default for engineering/CFD datasets where solver
+    # failures, boundary-condition errors, and grid divergence can produce
+    # physically unreasonable values at that rate or higher. The value is not
+    # tuned dynamically; a future version could expose it as a config parameter.
     complete = data.dropna()
     if len(complete) >= 4:
         iso = IsolationForest(contamination=0.1, random_state=42, n_estimators=100)

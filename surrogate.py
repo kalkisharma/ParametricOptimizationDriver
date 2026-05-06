@@ -1,7 +1,7 @@
 # =============================================================================
 # surrogate.py
 # Parametric Optimization Driver
-# Version: v1.1.1
+# Version: v1.1.2
 # Role: ML Engineer
 # Last modified: 2026-05-06
 # Description: Gaussian Process surrogate model — fits one GP per output column
@@ -74,6 +74,13 @@ def _loo_rmse(gpr: GaussianProcessRegressor, X: np.ndarray, y: np.ndarray) -> fl
 
 
 def _loo_r2(gpr: GaussianProcessRegressor, X: np.ndarray, y: np.ndarray) -> float:
+    """
+    Analytical leave-one-out R² for a fitted GPR.
+
+    NOTE: This is a TRAINING-DATA metric, not a held-out test metric.
+    LOO scores are optimistic relative to true generalization performance,
+    especially with small datasets. The UI should make this clear to users.
+    """
     try:
         L = gpr.L_
         alpha = gpr.alpha_.ravel()
@@ -234,18 +241,23 @@ class SurrogateModel:
     # ------------------------------------------------------------------
 
     def _check_fitted(self):
+        """Raise RuntimeError if the model has not been fitted yet."""
         if not self._fitted:
             raise RuntimeError("SurrogateModel has not been fitted yet. Call fit() first.")
 
     def _scale_x(self, X: np.ndarray) -> np.ndarray:
+        """Transform raw input array to StandardScaler-normalized space."""
         return self._x_scaler.transform(X)
 
     def get_gp(self, col: str) -> GaussianProcessRegressor:
+        """Return the fitted GaussianProcessRegressor for a given output column."""
         self._check_fitted()
         return self._gps[col]
 
     def get_x_scaler(self):
+        """Return the fitted StandardScaler for input normalization."""
         return self._x_scaler
 
     def get_y_scaler(self, col: str):
+        """Return the fitted StandardScaler for the given output column."""
         return self._y_scalers[col]

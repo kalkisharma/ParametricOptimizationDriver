@@ -324,3 +324,160 @@ All four role findings (PM, Security Engineer, Compliance Officer, Data Governan
 All Gate 2 role findings documented. CRITICAL finding: 1 (Lambda/class traversal sandbox gap — OPEN, deferred to Gate 4). HIGH findings: 2 (debug=True — RESOLVED; eq constraint TypeError — RESOLVED; KeyError Python 3.14 — RESOLVED). All other findings RESOLVED. Baseline test result: 83 passed, 0 failed. Gate 2 is CLOSED pending Gate 4 CRITICAL resolution. Gate 3 may begin.
 
 ---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** ML Engineer
+**Supporting Roles:** None
+**Finding (surrogate.py — LOO correctness):** LOO RMSE confirmed computed via Cholesky analytical form (`alpha_i / K_inv_ii`). Falls back to manual LOO loop only on exception. LOO R² uses the same Cholesky path. Both are training-data metrics only — generalization is not guaranteed, especially with < 2×n_inputs rows.
+**Severity:** LOW
+**Change:** Added clarifying docstring to `_loo_r2()` explicitly noting it is a training-data metric, not held-out test performance. Added missing docstrings to private helper methods (`_check_fitted`, `_scale_x`, `get_gp`, `get_x_scaler`, `get_y_scaler`).
+**Test Result:** PASS — 83 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** ML Engineer
+**Supporting Roles:** Instructional Designer
+**Finding (LOO metric user-facing framing):** The UI displays "LOO R²" and "LOO RMSE" labels on the diagnostics table with no explanation that these are training-data metrics, not held-out test scores. A user who does not know what LOO means may treat a "Good" badge as a guarantee of prediction accuracy on new inputs — which it is not, particularly with small datasets (< 30 rows). This is an Instructional Designer finding deferred to Gate 5.
+**Severity:** MEDIUM
+**Change:** None at Gate 3 — deferred to Gate 5 Instructional Designer (tooltip/explainer addition).
+**Test Result:** NOT RUN
+**Status:** OPEN — Gate 5 Instructional Designer.
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** ML Engineer
+**Supporting Roles:** None
+**Finding (surrogate.py — normalization/prediction correctness):** Confirmed: `fit_transform` applied to training X and per-output y; `transform` (not fit) applied to prediction X; output means inverse-transformed via scaler; output stds multiplied by `y_scaler.scale_[0]` (correct — stds scale linearly, not via inverse_transform). Anisotropic and isotropic length scale modes confirmed: anisotropic passes `np.ones(n_features)` as length_scale init; isotropic passes `1.0`. Both are tested by test_surrogate.py. No findings.
+**Severity:** LOW
+**Change:** None.
+**Test Result:** PASS — 83 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** ML Engineer
+**Supporting Roles:** Domain Expert
+**Finding (No extrapolation warning):** The tool does not warn the user when a suggested point lies outside the range of the training data on any input dimension. GP uncertainty does grow at extrapolation, which is reflected in the uncertainty heatmap and the ±2σ prediction intervals. However, no explicit banner, tooltip, or cell highlight alerts the user that a specific suggestion extrapolates beyond the training range. For engineering datasets, predictions in untested regions can be physically meaningless despite appearing confident (if the kernel length scale is large).
+**Severity:** MEDIUM
+**Change:** None at Gate 3 — deferred to Gate 5 Interaction Designer for UI-level warning implementation.
+**Test Result:** NOT RUN
+**Status:** OPEN — Gate 5 Interaction Designer.
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** ML Engineer
+**Supporting Roles:** None
+**Finding (acquisition.py — CEI correctness):** CEI formula confirmed correct for both maximize and minimize. Sign convention: `sign=+1` for maximize, `sign=-1` for minimize. `best_f = max(obj_vals * sign)` correctly gives the highest signed objective. EI formula `(mu - best_f - xi) * Φ(z) + σ * φ(z)` confirmed. ξ auto-scaling confirmed: ξ=0.1 at n=0, decays to 0.1/e at n=5×n_inputs, approaches 0 for large datasets. FeasibilitySearch fallback trigger: `if not feasible_mask.any()` immediately after `_best_feasible`. Convergence: `max_cei_value()` runs full DE search; `converged = max_cei < threshold`. All correct.
+**Severity:** LOW
+**Change:** Added docstrings to `_best_feasible()` and `_expected_improvement()` (sign convention explained). Added docstrings to all helper functions.
+**Test Result:** PASS — 83 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** ML Engineer
+**Supporting Roles:** None
+**Finding (optimization.py — cold start, Sobol, exception rollback):** Cold start LHS confirmed via `scipy.stats.qmc.LatinHypercube + scale(lo, hi)` — covers full bounds. Sobol Saltelli estimator confirmed: `S1_i = mean(f_B * (f_AB_i - f_A)) / Var(pool)`. The variance denominator pools both A and B matrices; theoretically only one is needed, but the difference is O(1/N) and negligible at N=1024. Exception rollback: the outer `try/except` in the worker thread always sets `_jobs[job_id]["error"]` and emits `{type: "done"}` via the `finally` block. The job store is always in a clean terminal state after either success or failure.
+**Severity:** LOW
+**Change:** Added docstrings to all optimization.py functions (`_parse_bounds`, `_parse_integer_dims`, `_parse_constraints`, `_parse_gp_settings`, `_fit_surrogate`, `_build_suggestion_records`, `_scatter_matrix_json`, `_uncertainty_heatmap_json`, `_lhs_design`, `run_refinement`, `run_optimization`).
+**Test Result:** PASS — 83 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** Scientific Python Developer
+**Supporting Roles:** None
+**Finding (preprocessing.py — IQR + Isolation Forest union):** Union behavior is intentional: any row flagged by either method is marked as a potential outlier, erring on the side of caution. Both methods are documented in the `detect_outliers` docstring. `contamination=0.1` had no explanatory comment — added one explaining the rationale. NaN rows confirmed always excluded: `nan_mask = data.isna().any(axis=1).values` is OR-ed into the result regardless of mask. NaN rows cannot be re-included via `outlier_include_mask` because `_preprocess` in optimization.py drops NaN rows with `df.dropna()` BEFORE applying the user mask, so NaN rows are never in the cleaned df that receives the mask.
+**Severity:** MEDIUM
+**Change:** `preprocessing.py` — Added 6-line explanatory comment for `contamination=0.1` explaining the default rationale and that it is not dynamically tuned.
+**Test Result:** PASS — 83 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** Scientific Python Developer
+**Supporting Roles:** None
+**Finding (outlier_include_mask length mismatch):** When a CSV has NaN rows, the mask built by the frontend (on the original df) will be longer than `df_clean` after NaN-dropping in `_preprocess`. The code silently ignores a mismatched mask (`if len(outlier_include_mask) == len(df_clean)`). This means the user's outlier inclusion choices are silently discarded when NaN rows are present. This is a data governance issue: the user believes their toggle choices are being honored, but they may not be.
+**Severity:** LOW
+**Change:** None at Gate 3 — logged for Gate 5 Full-stack Developer (front-end should account for NaN removal when sending the mask). Deferred.
+**Test Result:** NOT RUN
+**Status:** OPEN — Deferred to Gate 5.
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** Scientific Python Developer
+**Supporting Roles:** None
+**Finding (sensitivity.py — Sobol sample size):** 1024 samples is adequate for 2–5 inputs with a well-fitted GP. For higher-dimensional inputs (10+) the estimator variance increases and more samples are needed. The negative-value clip (`max(0, S1_raw)`) can bias the sum slightly above 1.0 with finite samples — documented in the test (tolerance 1.1) and now in the `sobol_first_order` docstring.
+**Severity:** LOW
+**Change:** Added sample-size guidance note to `sobol_first_order` docstring.
+**Test Result:** PASS — 83 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** Domain Expert
+**Supporting Roles:** None
+**Finding (physical plausibility — analytic fixtures):** The analytic aerodynamic fixture functions (thrust = sin(pitch°)×speed²×0.05, power = speed³×0.01, Cm = cos(pitch°)−0.01×speed) produce physically sensible behavior: thrust increases with speed² and pitch angle, power is dominated by speed (no pitch dependence), Cm is near-zero for small pitch and decreases with speed. GP predictions on 30 rows of this data (with small noise) are confirmed accurate (LOO R² > 0.85) by the test suite. Domain Expert cannot run the tool against actual program simulation data in this audit context; that validation is deferred to the program team.
+**Severity:** LOW
+**Change:** None.
+**Test Result:** PASS — 83 passed
+**Status:** RESOLVED — Program-level physical validation deferred to operational use.
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** Domain Expert
+**Supporting Roles:** None
+**Finding (trim constraint formulations):** The eq constraint with `|Cm - 0.0| ≤ tolerance` is the correct mathematical form for a trim moment balance. The feasibility probability `P(|output - target| ≤ tol)` computed via the two-CDF formula is physically meaningful: it gives the probability that the GP-predicted Cm falls within the trim tolerance band, accounting for GP uncertainty. For a well-fitted surrogate with low uncertainty near training points, this probability approaches 1.0 at feasible points and 0.0 at clearly infeasible points. The formulation is physically sound.
+**Severity:** LOW
+**Change:** None.
+**Test Result:** PASS — 83 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.2] — 2026-05-06
+**Gate:** 3 — ML Pipeline and Surrogate Model Review
+**Lead Role:** QA Engineer
+**Supporting Roles:** None
+**Finding (test coverage gaps):** The following behaviors are untested:
+  - surrogate.py: No test that GP std is near-zero at training points (calibration check). No test that predict_with_std raises RuntimeError when unfitted. No test for LOO RMSE fallback path (manual loop). MEDIUM.
+  - acquisition.py: No test for weighted-sum objective in CEI. No test for integer-rounding in CEI/FeasibilitySearch. No test for ξ boundary values (n_rows=0, n_rows=100). No test for FeasibilitySearch directly (only auto-switch path tested). MEDIUM.
+  - optimization.py: No test for no-output cold start in optimization mode (only refinement cold start tested). No test for exception rollback leaving job store in clean error state. No test for outlier_include_mask length mismatch. LOW.
+  - preprocessing.py: No test for empty dataset (0 rows). No test for single-column datasets. LOW.
+  - sensitivity.py: No test for sobol_chart_json with multiple output columns. LOW.
+**Severity:** MEDIUM
+**Change:** None at Gate 3 — all coverage gaps documented and deferred to Gate 6 for resolution.
+**Test Result:** PASS — 83 passed
+**Status:** OPEN — Gate 6 QA Engineer.
+
+---
+
+## Gate 3 PM Sign-Off — 2026-05-06
+All Gate 3 role findings documented. CRITICAL findings: none. HIGH findings: none. MEDIUM findings: LOO metric framing (deferred Gate 5), no extrapolation warning (deferred Gate 5), contamination=0.1 comment (RESOLVED), outlier mask mismatch (deferred Gate 5), test coverage gaps (deferred Gate 6). All MEDIUM+ findings tracked. Test result: 83 passed, 0 failed. Gate 3 is CLOSED. Gate 4 may begin.
+
+---
+All Gate 2 role findings documented. CRITICAL finding: 1 (Lambda/class traversal sandbox gap — OPEN, deferred to Gate 4). HIGH findings: 2 (debug=True — RESOLVED; eq constraint TypeError — RESOLVED; KeyError Python 3.14 — RESOLVED). All other findings RESOLVED. Baseline test result: 83 passed, 0 failed. Gate 2 is CLOSED pending Gate 4 CRITICAL resolution. Gate 3 may begin.
+
+---
