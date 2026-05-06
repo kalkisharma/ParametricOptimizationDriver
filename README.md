@@ -1,6 +1,6 @@
 # Parametric Optimization Driver
 
-[![Tests](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/test.yml/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/test.yml)
+[![Tests](https://github.com/kalkisharma/ParametricOptimizationDriver/actions/workflows/test.yml/badge.svg)](https://github.com/kalkisharma/ParametricOptimizationDriver/actions/workflows/test.yml)
 
 A Bayesian optimization co-pilot for CFD workflows. Upload your simulation results, define your objective and constraints, and get the next best input conditions to run — all in a browser-based UI.
 
@@ -62,7 +62,7 @@ Expressions are evaluated with the current candidate row's input values in scope
 clip(0.9 * power_max, 0, 1e6) # 90% of max power
 ```
 
-**Security:** No `import`, `exec`, `open`, or other builtins are available. Injections raise a `NameError`.
+**Security:** Expressions are validated against an AST whitelist before evaluation. Attribute access (`.__class__`), subscripting, lambda expressions, and comprehensions are blocked at parse time. No `import`, `exec`, `open`, or other builtins are available. Injections raise a `ValueError` or `NameError`.
 
 ### Table Lookup Constraints
 

@@ -1,7 +1,7 @@
 // =============================================================================
 // main.js
 // Parametric Optimization Driver
-// Version: v1.1.1
+// Version: v1.1.4
 // Role: Full-stack Developer
 // Last modified: 2026-05-06
 // Description: Frontend stepper navigation, drag-and-drop CSV upload, SSE
@@ -26,9 +26,10 @@ const STATE = {
   numericColumns: [],
   stats: {},
   preview: [],
+  nRows: 0,             // total rows in the uploaded CSV (for outlier mask length)
   currentStep: 1,
   maxUnlockedStep: 1,
-  outlierMask: [],      // bool[] parallel to cleaned rows (true = include)
+  outlierMask: [],      // bool[] of length nRows, parallel to original CSV rows (true = include)
   outlierData: null,    // raw outlier detection result from server
   configDirty: false,
   lastResult: null,
@@ -284,6 +285,7 @@ function applyUploadResult(data, filename) {
   STATE.numericColumns = data.numeric_columns;
   STATE.stats = data.stats;
   STATE.preview = data.preview;
+  STATE.nRows = data.n_rows;
 
   el('upload-filename').textContent = filename;
   el('upload-rowcol').textContent = `${data.n_rows} rows × ${data.columns.length} columns`;
@@ -341,12 +343,16 @@ el('to-preprocess-btn').onclick = () => {
 };
 
 function runOutlierDetection() {
-  // Client-side IQR outlier detection for preview (server does authoritative detection at run time)
+  // Client-side IQR outlier detection on the preview rows only (server runs the
+  // authoritative IQR + Isolation Forest on all rows at run time). The outlier
+  // mask covers ALL nRows so its length matches what the server expects.
   const cols = STATE.numericColumns;
   const preview = STATE.preview;
-  const n = preview.length;
-  const flagged = new Array(n).fill(false);
+  const nPreview = preview.length;
+  const nTotal = STATE.nRows;
 
+  // Flagged array for preview rows only (indices 0..nPreview-1)
+  const flaggedPreview = new Array(nPreview).fill(false);
   cols.forEach(col => {
     const vals = preview.map(r => r[col]).filter(v => v != null && !isNaN(v)).sort((a,b) => a-b);
     if (vals.length < 4) return;
@@ -355,14 +361,17 @@ function runOutlierDetection() {
     const iqr = q3 - q1;
     if (iqr === 0) return;
     const lo = q1 - 1.5 * iqr, hi = q3 + 1.5 * iqr;
-    preview.forEach((r, i) => { if (r[col] < lo || r[col] > hi) flagged[i] = true; });
+    preview.forEach((r, i) => { if (r[col] < lo || r[col] > hi) flaggedPreview[i] = true; });
   });
 
-  STATE.outlierMask = new Array(n).fill(true);  // all included initially
-  const nFlagged = flagged.filter(Boolean).length;
-  el('outlier-summary').textContent = `${nFlagged} row(s) flagged as potential outliers out of ${n} shown`;
+  // Full mask: preview rows use IQR flags; remaining rows default to included.
+  STATE.outlierMask = new Array(nTotal).fill(true);
 
-  renderOutlierChart(preview, cols, flagged);
+  const nFlagged = flaggedPreview.filter(Boolean).length;
+  const shown = nPreview < nTotal ? ` (first ${nPreview} of ${nTotal} shown)` : '';
+  el('outlier-summary').textContent = `${nFlagged} row(s) flagged as potential outliers out of ${nPreview} shown${shown}`;
+
+  renderOutlierChart(preview, cols, flaggedPreview);
 }
 
 function renderOutlierChart(rows, cols, flagged) {
@@ -389,21 +398,23 @@ function renderOutlierChart(rows, cols, flagged) {
 
 el('include-all-btn').onclick = () => { STATE.outlierMask.fill(true); toast('info', 'All rows included'); };
 el('exclude-flagged-btn').onclick = () => {
-  // Re-run detection and exclude flagged
+  // Re-run IQR on preview rows and exclude flagged. The mask covers all nRows
+  // so non-preview rows remain included (their true outlier status is unknown here).
   const cols = STATE.numericColumns;
   const preview = STATE.preview;
-  const n = preview.length;
-  const flagged = new Array(n).fill(false);
+  const flaggedPreview = new Array(preview.length).fill(false);
   cols.forEach(col => {
     const vals = preview.map(r => r[col]).filter(v => v != null && !isNaN(v)).sort((a,b) => a-b);
     if (vals.length < 4) return;
     const q1 = vals[Math.floor(vals.length*0.25)], q3 = vals[Math.floor(vals.length*0.75)];
     const iqr = q3-q1; if (!iqr) return;
     const lo = q1-1.5*iqr, hi = q3+1.5*iqr;
-    preview.forEach((r,i) => { if (r[col]<lo||r[col]>hi) flagged[i]=true; });
+    preview.forEach((r,i) => { if (r[col]<lo||r[col]>hi) flaggedPreview[i]=true; });
   });
-  STATE.outlierMask = flagged.map(f => !f);
-  const nExcluded = flagged.filter(Boolean).length;
+  // Build full-length mask: exclude flagged preview rows, keep all non-preview rows included.
+  STATE.outlierMask = new Array(STATE.nRows).fill(true);
+  flaggedPreview.forEach((f, i) => { if (f) STATE.outlierMask[i] = false; });
+  const nExcluded = flaggedPreview.filter(Boolean).length;
   toast('info', `${nExcluded} outlier row(s) excluded`);
 };
 
@@ -1169,7 +1180,11 @@ function renderSuggestionsTable(suggestions, result) {
       const v = row[col];
       const display = typeof v === 'number' ? v.toPrecision(6) : (v ?? '');
       if (isInput) {
-        return `<td contenteditable="true" data-col="${col}" data-row="${ri}">${display}</td>`;
+        // Extrapolation: value outside the training data min/max for this input column.
+        const s = STATE.stats[col];
+        const isExtrap = s && typeof v === 'number' && (v < s.min || v > s.max);
+        const cls = isExtrap ? ' class="extrap-cell"' : '';
+        return `<td contenteditable="true"${cls} data-col="${col}" data-row="${ri}">${display}</td>`;
       }
       const isViolation = col.startsWith('p_feasible_') && typeof v === 'number' && v < 0.5;
       return `<td class="${isViolation ? 'violation' : 'pred-col'}">${display}</td>`;

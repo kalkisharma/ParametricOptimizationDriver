@@ -1,7 +1,7 @@
 /* =============================================================================
    style.css
    Parametric Optimization Driver
-   Version: v1.1.1
+   Version: v1.1.4
    Role: UI Designer
    Last modified: 2026-05-06
    Description: Responsive CSS Grid layout with dark-mode default and light-mode
@@ -599,6 +599,8 @@ details.advanced .advanced-body {
 }
 #suggestions-table .violation { color: var(--warning); }
 #suggestions-table .pred-col { color: var(--text-secondary); }
+#suggestions-table .extrap-cell { background: color-mix(in srgb, var(--warning) 14%, transparent); }
+#suggestions-table .extrap-cell:focus { background: color-mix(in srgb, var(--warning) 20%, transparent); }
 
 /* --- Banners --- */
 .banner {

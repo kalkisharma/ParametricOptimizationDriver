@@ -330,8 +330,8 @@
           <thead>
             <tr>
               <th>Output column</th>
-              <th><span data-tip="Leave-one-out R²: how well the model predicts unseen points. ≥0.95 reliable; 0.80–0.95 fair; &lt;0.80 — add more data before optimising.||R² = 1 − SS_res / SS_tot (leave-one-out cross-validation)">LOO R²</span></th>
-              <th><span data-tip="Average prediction error in the original output units. Lower is better. Compare to the physical tolerance you care about.||RMSE = √( mean( (y_actual − y_LOO_predicted)² ) )">LOO RMSE</span></th>
+              <th><span data-tip="Leave-one-out R²: fit quality on training data — each point is withheld in turn and predicted from the rest. This is a training-data metric, NOT an independent test. A high value does not guarantee accuracy on designs outside the training range (extrapolation). ≥0.95 reliable; 0.80–0.95 fair; &lt;0.80 — add more data before optimising.||R² = 1 − SS_res / SS_tot   (leave-one-out, training data only)">LOO R²</span></th>
+              <th><span data-tip="Leave-one-out RMSE: average prediction error in original output units, computed on training data only. Lower is better — compare to the physical tolerance you care about. Training-data metric: accuracy on new untested designs is not guaranteed.||RMSE = √( mean( (y_actual − y_LOO_pred)² ) )   (training data only)">LOO RMSE</span></th>
               <th>Quality</th>
               <th>Kernel used</th>
             </tr>
@@ -378,6 +378,7 @@
         <p class="text-muted" style="margin-bottom:10px">
           Input cells are editable — changes trigger a live GP re-check.
           Yellow = predicted constraint violation.
+          <span style="color:var(--warning)">Orange background</span> = value outside the training data range (extrapolation — GP uncertainty is higher here).
         </p>
         <div id="suggestions-wrapper">
           <table id="suggestions-table"></table>

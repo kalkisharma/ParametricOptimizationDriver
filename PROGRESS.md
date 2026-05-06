@@ -15,7 +15,7 @@ A Python/Flask web application that acts as a smart CFD optimization co-pilot. I
 4. In **Optimization mode**: suggests the next cases most likely to improve a user-defined objective while satisfying constraints
 5. Outputs the suggested input conditions as an editable browser table and downloadable CSV
 
-The user runs those CFD cases externally, adds the results to the CSV, and re-uploads. The tool is fully **stateless** — every session starts fresh from the uploaded data.
+The user runs those CFD cases externally, adds the results to the CSV, and re-uploads. The GP model is **re-fit from scratch on every run**. Intermediate results (the fitted surrogate, suggestions, and uploaded CSV) are retained in server memory for the duration of the session and cleared when the process restarts.
 
 **Primary use case:** Maximize vehicle speed (an input variable) subject to trim constraints (e.g., force/moment balance within tolerance), where the surrogate models all constraint outputs and the optimizer searches for the highest feasible speed.
 
@@ -47,7 +47,7 @@ Each constraint defines:
 
 Optional **input-space constraints** (Python expressions on input variables only) block physically invalid input combinations.
 
-**Safe expression evaluation:** Strict allowlist — only numpy math functions (`sin`, `cos`, `exp`, `log`, `sqrt`, `interp`, `clip`, `pi`, `e`) plus current row variable names. `__builtins__` is `{}`. Tested against injection suite (`__import__`, `exec`, `os`, `open`, `lambda`, etc. — all must raise NameError).
+**Safe expression evaluation:** Two-layer defense — (1) AST whitelist validates the expression parse tree before eval runs, blocking attribute access (`.__class__`), subscripting, lambda expressions, and comprehensions; (2) `__builtins__` is set to `{}` blocking all builtin name lookups. Only numpy math functions and current row variable names are in scope. Tested against injection suite (`__import__`, `exec`, `os`, `open`, `lambda`, class-traversal — all raise `ValueError` or `NameError`).
 
 ### Batch Selection
 - **Size:** User-configurable, default 5

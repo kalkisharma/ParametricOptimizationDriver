@@ -1,7 +1,7 @@
 # =============================================================================
 # optimization.py
 # Parametric Optimization Driver
-# Version: v1.1.2
+# Version: v1.1.4
 # Role: ML Engineer
 # Last modified: 2026-05-06
 # Description: Pipeline orchestration for surrogate refinement (MaxVariance) and
@@ -107,20 +107,24 @@ def _preprocess(
     emit: Callable,
 ) -> tuple[pd.DataFrame, dict]:
     """
-    Drop NaN rows, apply user outlier mask, return cleaned df and nan_report.
+    Apply user outlier mask then drop NaN rows; return cleaned df and nan_report.
+
+    The mask is applied BEFORE NaN dropping so that mask indices correspond to
+    the original CSV row numbers — consistent with what the frontend sends.
+    NaN rows in the user-included set are still removed by dropna afterward.
     """
     emit("progress", "Cleaning data and applying outlier exclusions…", step=1, total=6)
 
     all_cols = input_cols + output_cols
     nan_info = nan_report(df, output_cols)
 
-    # Drop rows with NaN in any used column
-    df_clean = df.dropna(subset=all_cols).reset_index(drop=True)
-
-    # Apply user outlier mask (True = include)
-    if outlier_include_mask is not None and len(outlier_include_mask) == len(df_clean):
+    # Apply user inclusion mask BEFORE NaN dropping (mask indices = original CSV rows).
+    if outlier_include_mask is not None and len(outlier_include_mask) == len(df):
         mask = np.array(outlier_include_mask, dtype=bool)
-        df_clean = df_clean[mask].reset_index(drop=True)
+        df = df[mask].reset_index(drop=True)
+
+    # Drop rows with NaN in any used column from the (possibly masked) subset.
+    df_clean = df.dropna(subset=all_cols).reset_index(drop=True)
 
     return df_clean, nan_info
 

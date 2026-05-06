@@ -573,3 +573,98 @@ The table interpolation uses `LinearNDInterpolator` which returns NaN outside th
 All Gate 4 role findings documented. CRITICAL finding: 1 (Lambda/class traversal sandbox escape — RESOLVED). HIGH finding: 1 (Path traversal in _build_interpolator — RESOLVED). All other findings LOW — RESOLVED. Test result: 86 passed, 0 failed. The Gate 2 CRITICAL finding is now CLOSED. Gate 4 is CLOSED. Gate 5 may begin.
 
 ---
+
+## [v1.1.4] — 2026-05-06
+**Gate:** 5 — Interface, UX, and Streaming Review
+**Lead Role:** Instructional Designer
+**Supporting Roles:** ML Engineer
+**Finding (MEDIUM — LOO metric framing in UI):** The LOO R² and LOO RMSE column headers had tooltips that described these metrics in terms of "predicting unseen points" without making clear that LOO is a training-data metric, not an independent held-out test set. A user who does not know what LOO means could interpret a "Good" R² badge (≥0.95) as a guarantee of prediction accuracy on new, untested designs — which it is not, particularly for datasets smaller than ~30 rows or when suggestions lie outside the training range.
+**Severity:** MEDIUM
+**Change:** `templates/index.html` — Updated both LOO R² and LOO RMSE `data-tip` tooltip text to explicitly state "training-data metric, NOT an independent test" and "accuracy on new untested designs is not guaranteed." Formula annotations updated with "(training data only)" suffix.
+**Test Result:** PASS — 86 passed (no backend changes)
+**Status:** RESOLVED
+
+---
+
+## [v1.1.4] — 2026-05-06
+**Gate:** 5 — Interface, UX, and Streaming Review
+**Lead Role:** Interaction Designer
+**Supporting Roles:** UI Designer
+**Finding (MEDIUM — No extrapolation warning for out-of-range suggestions):** When the acquisition function suggests input values outside the training data range on any dimension, the suggestions table showed no visual indicator. GP uncertainty does increase in extrapolation regions (visible in the uncertainty heatmap), but the suggestions table gave no per-cell signal that a specific value was outside the observed data range. A user could accept an extrapolated suggestion without knowing to inspect the uncertainty map.
+**Severity:** MEDIUM
+**Change:** `static/js/main.js` — `renderSuggestionsTable` now checks each editable input cell against `STATE.stats[col].min` and `STATE.stats[col].max` (the training data range returned at upload). Cells outside the range receive class `extrap-cell`. `static/css/style.css` — Added `.extrap-cell` style (orange-tinted background via `color-mix`) and `.extrap-cell:focus` override. `templates/index.html` — Added explanation in the suggestions table description: "Orange background = value outside training data range (extrapolation — GP uncertainty is higher here)."
+**Test Result:** PASS — 86 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.4] — 2026-05-06
+**Gate:** 5 — Interface, UX, and Streaming Review
+**Lead Role:** Full-stack Developer
+**Supporting Roles:** PM
+**Finding (LOW — Outlier mask length mismatch between frontend and server):** `STATE.outlierMask` was initialized to `new Array(preview.length).fill(true)` — at most 10 rows (the preview size). The server's cleaned df has all non-NaN rows from the full CSV, which is almost always > 10 rows. The server check `len(outlier_include_mask) == len(df_clean)` always failed, silently discarding the user's toggle choices. Additionally, `_preprocess` applied the mask AFTER NaN dropping, meaning any mask indexed on the original CSV (including NaN row positions) would be misaligned.
+**Severity:** LOW
+**Change (frontend):** `static/js/main.js` — (1) Store `STATE.nRows = data.n_rows` in `applyUploadResult`. (2) In `runOutlierDetection`, initialize `STATE.outlierMask = new Array(STATE.nRows).fill(true)` (full CSV length); the IQR detection still runs on preview rows only, flagging the visible subset. (3) Fixed `exclude-flagged-btn` handler to maintain the full-length mask (not shrink it to preview length). `optimization.py` — Changed `_preprocess` to apply the user inclusion mask BEFORE NaN dropping, and compare against `len(df)` (original) rather than `len(df_clean)`. This ensures mask indices always correspond to original CSV row positions.
+**Test Result:** PASS — 86 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.4] — 2026-05-06
+**Gate:** 5 — Interface, UX, and Streaming Review
+**Lead Role:** Technical Writer
+**Supporting Roles:** Security Engineer
+**Finding (LOW — README badge placeholder):** README.md line 3 used `YOUR_USERNAME/YOUR_REPO` placeholder in the GitHub Actions badge URL. The badge pointed to a non-existent Actions workflow URL, rendering as a broken image on GitHub.
+**Severity:** LOW
+**Change:** `README.md` — Updated badge URL to `kalkisharma/ParametricOptimizationDriver`. Also updated the README security description for constraint expressions to reflect the Gate 4 AST whitelist fix: expressions are now validated against an AST whitelist (blocking attribute access, lambda, subscript, comprehensions) before eval runs — not just `__builtins__ = {}`.
+**Test Result:** PASS — 86 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.4] — 2026-05-06
+**Gate:** 5 — Interface, UX, and Streaming Review
+**Lead Role:** Technical Writer
+**Supporting Roles:** Data Governance Lead
+**Finding (LOW — "Stateless" description inaccuracy):** PROGRESS.md stated "The tool is fully stateless — every session starts fresh from the uploaded data." This is incorrect. The GP model is re-fit from scratch on each run, but the fitted surrogate, suggestions, and uploaded CSV are retained in memory (`_jobs[job_id]`) until the process restarts. The `/predict_row` endpoint explicitly depends on this retained state. The description was misleading to users who might assume session data is never retained.
+**Severity:** LOW
+**Change:** `PROGRESS.md` — Replaced "fully stateless" description with accurate statement: "The GP model is re-fit from scratch on every run. Intermediate results (the fitted surrogate, suggestions, and uploaded CSV) are retained in server memory for the duration of the session and cleared when the process restarts." Also updated the safe expression evaluation description to reflect the Gate 4 AST whitelist.
+**Test Result:** PASS — 86 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.4] — 2026-05-06
+**Gate:** 5 — Interface, UX, and Streaming Review
+**Lead Role:** Full-stack Developer
+**Supporting Roles:** Security Engineer
+**Finding (SSE streaming review):** SSE handler in main.js reviewed:
+  - `es.onerror` guarded by `closed` flag — prevents double-handling if error fires after `result`. Correct.
+  - `es.onmessage` handles `progress`, `result`, `error`; unrecognized event types silently ignored — acceptable, server only emits known types.
+  - No auto-reconnect: EventSource would normally reconnect, but the `closed` guard + `es.close()` prevents it after terminal events. Correct for a pipeline that emits exactly one terminal event (`result` or `error`).
+  - No user-controlled data in the SSE URL — jobId is a UUID generated server-side, not constructed from user input.
+  - After `error` event, `goToStep(3)` is called but steps 4–5 remain unlocked. The user can navigate back to the results panel (which will be empty). Minor UX issue, documented here; fixing requires step lock-back logic.
+  - Toast messages: correct types (info/success auto-dismiss 4s; error persists). Message text is correctly escaped via `escHtml`. Error detail HTML is built from server-controlled content — acceptable since the server is trusted.
+**Severity:** LOW
+**Change:** None — all SSE and toast behavior confirmed correct. The unlocked-step-after-error UX issue is documented as known-acceptable (LOW).
+**Test Result:** PASS — 86 passed
+**Status:** RESOLVED (UX step-unlock issue documented as OPEN LOW, deferred)
+
+---
+
+## [v1.1.4] — 2026-05-06
+**Gate:** 5 — Interface, UX, and Streaming Review
+**Lead Role:** QA Engineer
+**Supporting Roles:** None
+**Finding (test coverage — frontend changes):** Frontend changes (tooltip text, extrapolation cells, mask fix) are not covered by the pytest suite (no browser automation). The `_preprocess` mask-before-NaN fix in optimization.py has no dedicated test. The existing tests that call `_preprocess` (via `run_optimization` / `run_refinement`) do not send `outlier_include_mask`, so the mask path is not exercised. Adding a unit test for the mask fix is deferred to Gate 6.
+**Severity:** LOW
+**Change:** None at Gate 5.
+**Test Result:** PASS — 86 passed
+**Status:** OPEN — Deferred to Gate 6 (outlier mask test with NaN rows).
+
+---
+
+## Gate 5 PM Sign-Off — 2026-05-06
+All Gate 5 role findings documented. CRITICAL findings: none. HIGH findings: none. MEDIUM findings: 2 (LOO metric framing — RESOLVED; no extrapolation warning — RESOLVED). LOW findings: 5 (outlier mask mismatch — RESOLVED; README badge — RESOLVED; "stateless" description — RESOLVED; SSE review — RESOLVED with one deferred UX note; QA frontend coverage — OPEN, deferred Gate 6). All MEDIUM findings resolved. Test result: 86 passed, 0 failed. Gate 5 is CLOSED. Gate 6 may begin.
+
+---
