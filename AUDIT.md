@@ -752,3 +752,88 @@ All Gate 5 role findings documented. CRITICAL findings: none. HIGH findings: non
 All Gate 6 role findings documented. CRITICAL findings: none. HIGH findings: none. MEDIUM finding: 1 (coverage gaps — RESOLVED, 11 new tests added). LOW findings: 4 (LOO fallback confirmed — RESOLVED; regression test for mask fix — RESOLVED; CI review — OPEN deferred Gate 7; remaining gaps — acceptable). Test result: 97 passed, 0 failed (up from 86). Gate 6 is CLOSED. Gate 7 may begin.
 
 ---
+
+## [v1.1.6] — 2026-05-06
+**Gate:** 7 — Pre-Distribution Audit Close
+**Lead Role:** Technical Writer
+**Supporting Roles:** PM, Security Engineer, Compliance Officer
+**Finding (docs/CSV_SCHEMA.md — MISSING):** No formal schema reference existed for the upload CSV, the output `next_cases.csv`, or the constraint table CSV. Users needed to infer format requirements from the README and source code. A missing schema reference increases the risk of format errors and incorrect data interpretation.
+**Severity:** MEDIUM
+**Change:** Created `docs/CSV_SCHEMA.md` documenting: upload CSV format requirements, column roles (Input/Output/Ignore), NaN handling rules, cold-start header-only CSV, output CSV column definitions (input columns, pred_*, pred_*_lower, pred_*_upper, p_feasible_n, timestamp), constraint table CSV format, and security note on path validation.
+**Test Result:** PASS — 97 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.6] — 2026-05-06
+**Gate:** 7 — Pre-Distribution Audit Close
+**Lead Role:** Technical Writer
+**Supporting Roles:** Instructional Designer
+**Finding (docs/GLOSSARY.md — MISSING):** No glossary existed for the technical terminology used throughout the UI and documentation (GP, CEI, LOO, Sobol S1, kriging believer, Matérn 5/2, etc.). New users from engineering backgrounds without ML/statistics training had no reference for these terms.
+**Severity:** LOW
+**Change:** Created `docs/GLOSSARY.md` with 30+ entries covering all major technical terms: Bayesian optimization, GP, posterior, Matérn 5/2, CEI, EI, FeasibilitySearch, MaxVariance, kriging believer, LOO, Sobol S1, LHS, IQR, Isolation Forest, xi (exploration parameter), length-scale, anisotropic kernel, bounds, noise level, constraint, p_feasible, extrapolation, and all abbreviations in a quick reference table.
+**Test Result:** PASS — 97 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.6] — 2026-05-06
+**Gate:** 7 — Pre-Distribution Audit Close
+**Lead Role:** Instructional Designer
+**Supporting Roles:** Domain Expert, ML Engineer
+**Finding (docs/TEACHING.md — MISSING):** No pedagogical guide explained the WHY behind the algorithms to users who are engineers rather than ML practitioners. The tool requires users to interpret LOO R², Sobol S1 indices, p_feasible values, and acquisition strategies correctly to avoid misuse — but no resource explained the underlying theory in accessible terms.
+**Severity:** MEDIUM
+**Change:** Created `docs/TEACHING.md` with nine sections: (1) Why not grid search? (2) The GP surrogate — theory, fitting, interpolation property, Matérn kernel rationale. (3) LOO diagnostics — Cholesky analytical formula, what LOO does NOT tell you, R² interpretation thresholds. (4) Acquisition functions — MaxVariance, CEI (EI + constraint probability math), FeasibilitySearch fallback logic. (5) Sobol sensitivity analysis — S1 definition, Monte Carlo via GP, caveats. (6) Constraint expressions — AST whitelist security mechanism explained. (7) Interpreting the Results page — LOO R² thresholds, sensitivity chart use, suggestions table columns, extrapolation cells, live editing. (8) When to stop — convergence criteria. (9) Common pitfalls — too few data points, clustering, infeasibility from start, LOO R²=1.0 overfitting, no-trend outputs.
+**Test Result:** PASS — 97 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.6] — 2026-05-06
+**Gate:** 7 — Pre-Distribution Audit Close
+**Lead Role:** Security Engineer
+**Supporting Roles:** PM
+**Finding (requirements.txt — not pinned):** Gate 1 flagged that `requirements.txt` used `>=` version constraints, allowing any future major version to be installed. This means a fresh install after a future breaking release (e.g., scikit-learn 2.0, numpy 3.0) could silently pull incompatible API changes. This was the MEDIUM finding from Gate 1.
+**Severity:** MEDIUM
+**Change:** `requirements.txt` — Pinned all packages to exact installed versions: flask==3.1.3, numpy==2.4.4, pandas==3.0.2, scikit-learn==1.8.0, scipy==1.17.1, plotly==6.7.0, gitpython==3.1.50, PyGithub==2.9.1, pytest==9.0.3. Note: hash pinning (`pip-compile --generate-hashes`) is not implemented in this pass — that would require a locked requirements file generated on a clean environment. Exact version pinning is a significant improvement over `>=` constraints and is appropriate for this tool's risk level.
+**Test Result:** PASS — 97 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.6] — 2026-05-06
+**Gate:** 7 — Pre-Distribution Audit Close
+**Lead Role:** Full-stack Developer
+**Supporting Roles:** QA Engineer
+**Finding (CI matrix — Python 3.11 only):** Gate 6 flagged that CI ran only on Python 3.11. The Gate 2 `KeyError` catch (Python 3.14 behavior for `__builtins__['key']`) would not be exercised on 3.11 CI. A future contributor reverting that fix would not be caught by CI. Additionally, Python 3.12 is the current stable release and is the natural next target.
+**Severity:** LOW
+**Change:** `.github/workflows/test.yml` — Added `strategy.matrix.python-version: ["3.11", "3.12"]`. The `actions/setup-python@v5` step uses `${{ matrix.python-version }}`. Both matrix jobs run full `pytest -v --tb=short`. OS matrix (Windows/macOS) and coverage thresholds are deferred to future audit cycles as they require additional infrastructure.
+**Test Result:** PASS — 97 passed (local; CI matrix will run on push)
+**Status:** RESOLVED
+
+---
+
+## [v1.1.6] — 2026-05-06
+**Gate:** 7 — Pre-Distribution Audit Close
+**Lead Role:** Technical Writer
+**Supporting Roles:** Domain Expert
+**Finding (README — no Known Limitations section):** Gate 1 identified single-objective-only as a known limitation for multi-objective program problems (Pareto front optimization). Gate 3 identified LOO as a training-only metric. These limitations were not documented in the README for users who may have different expectations. The PROGRESS.md had partial coverage but was not the primary reference document.
+**Severity:** LOW
+**Change:** `README.md` — Added "Known Limitations" section listing: single-objective only (no multi-objective Pareto front), LOO metric is training-data only, no multi-fidelity support, stationary kernel assumption, table constraint interpolation limited to convex hull, session-level state only.
+**Test Result:** PASS — 97 passed
+**Status:** RESOLVED
+
+---
+
+## Gate 7 PM Sign-Off — 2026-05-06
+All Gate 7 role findings documented. CRITICAL findings: none. HIGH findings: none. MEDIUM findings: 3 (CSV_SCHEMA.md missing — RESOLVED; TEACHING.md missing — RESOLVED; requirements.txt unpinned — RESOLVED). LOW findings: 3 (GLOSSARY.md missing — RESOLVED; CI matrix — RESOLVED; README known limitations — RESOLVED). All findings RESOLVED. Test result: 97 passed, 0 failed. VERSION: v1.1.6. Docs: CSV_SCHEMA.md, GLOSSARY.md, TEACHING.md created. CI matrix: 3.11 + 3.12. Requirements: exact version pins.
+
+**Audit-wide status summary:**
+- CRITICAL findings: 2 total (Lambda/class traversal — Gate 4 RESOLVED; path traversal — Gate 4 RESOLVED)
+- HIGH findings: 4 total (debug=True — Gate 2 RESOLVED; eq constraint TypeError — Gate 2 RESOLVED; KeyError Python 3.14 — Gate 2 RESOLVED; path traversal confirmed — Gate 4 RESOLVED)
+- MEDIUM findings: All RESOLVED. Open items carried forward as program-level decisions (data classification, compliance determination, authentication for network deployment) are beyond the tool's scope and documented ON RECORD.
+- Test trajectory: 0 → 83 (Gate 2) → 86 (Gate 4) → 97 (Gate 6) → 97 (Gate 7, unchanged)
+
+Gate 7 is CLOSED. The audit is COMPLETE. Tag: v1.1.6.
+
+---

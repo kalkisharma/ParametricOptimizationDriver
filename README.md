@@ -237,6 +237,17 @@ ParametricOptimizationDriver/
 
 ---
 
+## Known Limitations
+
+- **Single-objective only.** The optimizer maximizes or minimizes one scalar objective. Multi-objective Pareto front optimization is not supported.
+- **LOO metric is training-data only.** LOO R² and RMSE measure how well the surrogate fits the training set. Accuracy on new, untested designs — especially in extrapolation regions — is not guaranteed.
+- **No multi-fidelity support.** All simulation results are treated as equally accurate. High-fidelity and low-fidelity data cannot be distinguished.
+- **Stationary kernel assumption.** The Matérn 5/2 kernel assumes the function varies at the same rate everywhere. If your output has sharp transitions in some regions and is flat elsewhere, surrogate accuracy may be uneven.
+- **Table constraint interpolation is linear within the convex hull only.** Points outside the training convex hull of the constraint table return NaN (treated as 50% feasible in CEI). Extrapolation of table limits is not performed.
+- **Session-level state only.** The GP model, suggestions, and uploaded data are retained in server memory for the duration of the running process. Restarting the server clears all session data.
+
+---
+
 ## Status
 
 See [PROGRESS.md](PROGRESS.md) for detailed design decisions and build phase status.
