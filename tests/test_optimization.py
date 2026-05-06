@@ -1,3 +1,14 @@
+# =============================================================================
+# tests/test_optimization.py
+# Parametric Optimization Driver
+# Version: v1.1.5
+# Role: QA Engineer, ML Engineer
+# Last modified: 2026-05-06
+# Description: Tests for optimization.py — full pipeline (refinement and
+#              optimization modes), cold-start LHS, outlier mask, convergence,
+#              and performance assertions.
+# =============================================================================
+
 """Tests for optimization.py: full pipeline, cold-start LHS, convergence, timing."""
 
 import time
@@ -118,6 +129,41 @@ def test_optimization_feasibility_mode_no_feasible():
     }]}
     result = run_optimization(df, cfg, _noop_emit)
     assert result.get("feasibility_mode") is True
+
+
+# ─── Gate 6: coverage gap tests ──────────────────────────────────────────────
+
+def test_optimization_cold_start_no_output_data():
+    """Optimization mode with all-NaN outputs produces LHS cold-start result."""
+    df = pd.DataFrame({
+        "speed": [50.0, 60.0, 70.0],
+        "pitch": [0.0,  5.0, -5.0],
+        "thrust": [np.nan, np.nan, np.nan],
+        "power":  [np.nan, np.nan, np.nan],
+        "Cm":     [np.nan, np.nan, np.nan],
+    })
+    result = run_optimization(df, {**OPT_CONFIG, "n_suggestions": 3}, _noop_emit)
+    assert result["mode"] == "cold_start"
+    assert len(result["suggestions"]) == 3
+
+
+def test_outlier_mask_applied_before_nan_drop():
+    """Mask excludes rows by original CSV index (applied before NaN dropping).
+
+    Setup: 6-row df, row 0 has NaN thrust. Mask excludes rows 1, 2, 3.
+    Expected surviving rows after mask+dropna: rows 4 and 5 only (2 rows).
+    2 rows < n_inputs+1=3 → ValueError('Not enough data').
+
+    With the OLD behavior (mask applied AFTER dropna, length check fails when
+    len(mask)!=len(df_clean)): mask would have been silently discarded, all 5
+    clean rows kept → no error. This test distinguishes old from new behavior.
+    """
+    df = make_dataset(n=6, seed=42)
+    df.loc[0, "thrust"] = np.nan  # row 0: NaN in output
+    mask = [True, False, False, False, True, True]  # rows 1,2,3 excluded
+    with pytest.raises(ValueError, match="Not enough data"):
+        run_refinement(df, {**BASE_CONFIG, "outlier_include_mask": mask,
+                           "n_suggestions": 1}, _noop_emit)
 
 
 # ─── Performance assertions ──────────────────────────────────────────────────

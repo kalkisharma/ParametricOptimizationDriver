@@ -1,3 +1,13 @@
+# =============================================================================
+# tests/test_acquisition.py
+# Parametric Optimization Driver
+# Version: v1.1.5
+# Role: QA Engineer, ML Engineer
+# Last modified: 2026-05-06
+# Description: Tests for acquisition.py — MaxVariance, CEI, FeasibilitySearch,
+#              weighted-sum objective, integer rounding, xi decay, golden outputs.
+# =============================================================================
+
 """Tests for acquisition.py: MaxVariance, CEI, FeasibilitySearch, golden outputs."""
 
 import numpy as np
@@ -7,6 +17,7 @@ from acquisition import (
     ConstrainedEIAcquisition,
     FeasibilitySearchAcquisition,
     MaxVarianceAcquisition,
+    _xi_from_dataset_size,
 )
 from constraints import ConstraintDef
 from surrogate import SurrogateModel
@@ -110,6 +121,44 @@ def test_integer_rounding():
     # Speed column should be integer-valued
     for row in sugg:
         assert abs(row[0] - round(row[0])) < 1e-9, f"speed not integer: {row[0]}"
+
+
+# ─── Gate 6: coverage gap tests ──────────────────────────────────────────────
+
+def test_cei_weighted_sum_objective():
+    """CEI accepts a weighted-sum objective spec and returns valid suggestions."""
+    m, X, Y = _fit_simple()
+    strategy = ConstrainedEIAcquisition()
+    obj_spec = {"type": "weighted", "weights": {"y": 1.0}}
+    sugg = strategy.suggest(m, BOUNDS, n=2, existing_X=X,
+                            X_train=X, Y_train=Y, objective_spec=obj_spec)
+    assert sugg.shape == (2, 2)
+    for row in sugg:
+        for v, (lo, hi) in zip(row, BOUNDS):
+            assert lo <= v <= hi
+
+
+def test_xi_decays_with_dataset_size():
+    """Exploration parameter xi should be 0.1 at n=0 and strictly decrease as n grows."""
+    xi_zero = _xi_from_dataset_size(n_rows=0, n_inputs=2)
+    xi_small = _xi_from_dataset_size(n_rows=10, n_inputs=2)
+    xi_large = _xi_from_dataset_size(n_rows=100, n_inputs=2)
+    assert xi_zero == pytest.approx(0.1, rel=1e-6)
+    assert xi_small < xi_zero
+    assert xi_large < xi_small
+    assert xi_large >= 0.0
+
+
+def test_cei_integer_rounding():
+    """CEI with integer_dims should round the specified dimension to integers."""
+    m, X, Y = _fit_simple()
+    strategy = ConstrainedEIAcquisition()
+    obj_spec = {"type": "single", "column": "y", "direction": "maximize"}
+    sugg = strategy.suggest(m, BOUNDS, n=3, existing_X=X,
+                            X_train=X, Y_train=Y,
+                            objective_spec=obj_spec, integer_dims=[0])
+    for row in sugg:
+        assert abs(row[0] - round(row[0])) < 1e-9, f"x1 not rounded: {row[0]}"
 
 
 def test_golden_output_max_variance():

@@ -1,6 +1,17 @@
+# =============================================================================
+# tests/test_preprocessing.py
+# Parametric Optimization Driver
+# Version: v1.1.5
+# Role: QA Engineer, Scientific Python Developer
+# Last modified: 2026-05-06
+# Description: Tests for preprocessing.py — outlier detection (IQR + Isolation
+#              Forest), NaN handling, clean(), edge cases (empty/single-column).
+# =============================================================================
+
 """Tests for preprocessing.py: outlier detection, NaN handling, clean()."""
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from preprocessing import clean, detect_outliers, nan_report
@@ -53,3 +64,23 @@ def test_nan_report_counts(aero_df_with_nan):
 def test_nan_report_clean(aero_df):
     report = nan_report(aero_df, OUTPUT_COLS)
     assert report["rows_with_nan"] == 0
+
+
+# ─── Gate 6: coverage gap tests ──────────────────────────────────────────────
+
+def test_detect_outliers_empty_dataset():
+    """Empty dataframe should return an empty boolean mask without raising."""
+    df = pd.DataFrame({"speed": pd.Series([], dtype=float),
+                       "thrust": pd.Series([], dtype=float)})
+    mask = detect_outliers(df, ["speed", "thrust"])
+    assert len(mask) == 0
+    assert mask.dtype == bool
+
+
+def test_detect_outliers_single_column():
+    """Single-column dataset should produce a valid boolean mask."""
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"speed": rng.uniform(20, 100, 20)})
+    mask = detect_outliers(df, ["speed"])
+    assert len(mask) == 20
+    assert mask.dtype == bool

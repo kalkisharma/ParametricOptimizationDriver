@@ -1,9 +1,21 @@
+# =============================================================================
+# tests/test_surrogate.py
+# Parametric Optimization Driver
+# Version: v1.1.5
+# Role: QA Engineer, ML Engineer
+# Last modified: 2026-05-06
+# Description: Tests for surrogate.py — GP fitting, LOO diagnostics, kernel
+#              selection, std calibration, and LOO fallback path.
+# =============================================================================
+
 """Tests for surrogate.py: GP fitting, LOO diagnostics, kernel selection."""
 
 import numpy as np
 import pytest
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import Matern
 
-from surrogate import SurrogateModel
+from surrogate import SurrogateModel, _loo_rmse
 from tests.conftest import make_dataset, f_thrust, f_power
 
 
@@ -88,3 +100,47 @@ def test_not_enough_data_warning():
     m = SurrogateModel(n_restarts=1)
     m.fit(X, Y, INPUT_COLS, OUTPUT_COLS)
     assert m._fitted
+
+
+# ─── Gate 6: coverage gap tests ──────────────────────────────────────────────
+
+def test_predict_with_std_unfitted_raises():
+    """predict_with_std on an unfitted model should raise RuntimeError."""
+    m = SurrogateModel()
+    with pytest.raises(RuntimeError, match="not been fitted"):
+        m.predict_with_std(np.zeros((1, 2)))
+
+
+def test_gp_std_lower_at_training_than_held_out():
+    """GP std at training points should be lower than at distant untrained points.
+    This confirms the surrogate is calibrated: it is more certain where it has data."""
+    m, X, _ = _fit()
+    _, stds_train = m.predict_with_std(X)
+
+    # Create points far outside the training domain [20-100] x [-10,10]
+    X_far = np.array([[200.0, 50.0], [200.0, -50.0], [-100.0, 50.0]])
+    _, stds_far = m.predict_with_std(X_far)
+
+    mean_std_train = stds_train.mean()
+    mean_std_far = stds_far.mean()
+    assert mean_std_train < mean_std_far, (
+        f"Expected lower std at training points ({mean_std_train:.4f}) "
+        f"than at distant points ({mean_std_far:.4f})"
+    )
+
+
+def test_loo_rmse_fallback_path():
+    """Deleting L_ forces the except branch (manual LOO loop) in _loo_rmse.
+    The fallback must still return a non-negative float."""
+    X = np.linspace(0, 1, 7).reshape(-1, 1)
+    y = np.sin(X.flatten())
+    gp = GaussianProcessRegressor(kernel=Matern(nu=2.5), n_restarts_optimizer=0)
+    gp.fit(X, y)
+
+    rmse_fast = _loo_rmse(gp, X, y)
+    assert rmse_fast >= 0.0
+
+    del gp.L_  # triggers AttributeError in fast path → fallback executes
+    rmse_fallback = _loo_rmse(gp, X, y)
+    assert isinstance(rmse_fallback, float)
+    assert rmse_fallback >= 0.0

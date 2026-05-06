@@ -668,3 +668,87 @@ All Gate 4 role findings documented. CRITICAL finding: 1 (Lambda/class traversal
 All Gate 5 role findings documented. CRITICAL findings: none. HIGH findings: none. MEDIUM findings: 2 (LOO metric framing — RESOLVED; no extrapolation warning — RESOLVED). LOW findings: 5 (outlier mask mismatch — RESOLVED; README badge — RESOLVED; "stateless" description — RESOLVED; SSE review — RESOLVED with one deferred UX note; QA frontend coverage — OPEN, deferred Gate 6). All MEDIUM findings resolved. Test result: 86 passed, 0 failed. Gate 5 is CLOSED. Gate 6 may begin.
 
 ---
+
+## [v1.1.5] — 2026-05-06
+**Gate:** 6 — Test Coverage and CI Review
+**Lead Role:** QA Engineer
+**Supporting Roles:** ML Engineer, Scientific Python Developer
+**Finding (MEDIUM — Coverage gaps from Gate 3 deferred list):** The following behaviors were untested as of Gate 3:
+  - surrogate.py: `predict_with_std` on unfitted model; GP std calibration (lower at training points than at distant untrained points); `_loo_rmse` analytical fallback path.
+  - acquisition.py: weighted-sum objective in CEI; ξ decay behavior with dataset size; integer rounding in CEI (only MaxVariance was tested).
+  - optimization.py: cold start in optimization mode (only refinement cold start tested); outlier mask applied before NaN drop (Gate 5 fix).
+  - preprocessing.py: empty dataset (0 rows); single-column dataset.
+  - sensitivity.py: `sobol_chart_json` with multiple output columns (only single-output was tested).
+**Severity:** MEDIUM
+**Change:** Added 11 new tests across 5 test files. Added file headers to all modified test files (v1.1.5). All tests added to the `# Gate 6: coverage gap tests` section in each file.
+  - `tests/test_surrogate.py`: `test_predict_with_std_unfitted_raises`, `test_gp_std_lower_at_training_than_held_out`, `test_loo_rmse_fallback_path`
+  - `tests/test_acquisition.py`: `test_cei_weighted_sum_objective`, `test_xi_decays_with_dataset_size`, `test_cei_integer_rounding`
+  - `tests/test_optimization.py`: `test_optimization_cold_start_no_output_data`, `test_outlier_mask_applied_before_nan_drop`
+  - `tests/test_preprocessing.py`: `test_detect_outliers_empty_dataset`, `test_detect_outliers_single_column`
+  - `tests/test_sensitivity.py`: `test_sobol_chart_json_multiple_outputs`
+**Test Result:** PASS — 97 passed (was 86; 11 new tests, all pass)
+**Status:** RESOLVED
+
+---
+
+## [v1.1.5] — 2026-05-06
+**Gate:** 6 — Test Coverage and CI Review
+**Lead Role:** QA Engineer
+**Supporting Roles:** Security Engineer
+**Finding (test_loo_rmse_fallback_path — LOO fallback confirmed):** The `_loo_rmse` analytical fast path uses `gpr.L_` (sklearn Cholesky factor). The test deletes `L_` post-fit to trigger `AttributeError`, which is caught by the `except Exception` clause. The fallback manual LOO loop re-fits one GP per held-out point and computes errors. The test confirms the fallback returns a non-negative float — the same guarantee as the fast path. The `_loo_r2` fallback (returns 0.0 on exception) is not separately tested since its fallback is a no-op; the Gate 3 finding is now resolved via the RMSE fallback test.
+**Severity:** LOW
+**Change:** See above (included in the 11-test addition).
+**Test Result:** PASS — 97 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.5] — 2026-05-06
+**Gate:** 6 — Test Coverage and CI Review
+**Lead Role:** QA Engineer
+**Supporting Roles:** None
+**Finding (test_outlier_mask_applied_before_nan_drop — regression test for Gate 5 fix):** This test differentiates old vs new `_preprocess` behavior. With the old code (mask applied AFTER NaN drop, check `len(mask)==len(df_clean)`): a mask of length 6 would not equal len(df_clean)=5 (one NaN row dropped), so the mask would be silently discarded and all 5 clean rows used — no error. With the new code (mask applied BEFORE NaN drop, check `len(mask)==len(df)`): 3 rows are excluded by mask, 1 NaN row dropped afterward → 2 rows remain < n_inputs+1=3 → ValueError. The test asserts ValueError, confirming the Gate 5 fix is in effect.
+**Severity:** LOW
+**Change:** Test added — see above.
+**Test Result:** PASS — 97 passed
+**Status:** RESOLVED
+
+---
+
+## [v1.1.5] — 2026-05-06
+**Gate:** 6 — Test Coverage and CI Review
+**Lead Role:** Full-stack Developer
+**Supporting Roles:** Security Engineer
+**Finding (CI workflow review):** `.github/workflows/test.yml` analyzed:
+  - Trigger: `push` and `pull_request` — correct, covers all integration points.
+  - Python version: "3.11" only. The tool is being developed on Python 3.14.4. The Gate 2 Python 3.14 `KeyError` fix (different exception type in `__builtins__['key']`) is not exercised on CI. If a future contributor reverts the `KeyError` catch, CI on 3.11 would not catch the regression.
+  - No coverage threshold — CI passes even if coverage drops to 0%.
+  - No pinned dependency hash verification — `pip install -r requirements.txt` with `>=` constraints can pull breaking versions.
+  - `pytest -v --tb=short` flags are correct and complete.
+  - No matrix across OS platforms (Windows, macOS) — path separator and tempfile behavior could differ.
+**Severity:** LOW
+**Change:** None at Gate 6 — CI changes are low-impact improvements, not correctness issues. Documented as OPEN for Gate 7 Technical Writer.
+**Test Result:** PASS — 97 passed (local run on Python 3.14)
+**Status:** OPEN — Deferred to Gate 7 (CI matrix, coverage, dependency pinning).
+
+---
+
+## [v1.1.5] — 2026-05-06
+**Gate:** 6 — Test Coverage and CI Review
+**Lead Role:** Security Engineer
+**Supporting Roles:** QA Engineer
+**Finding (remaining coverage gaps — acceptable at Gate 6):** After 11 new tests, the following gaps remain as documented known-acceptable:
+  - `app.py` exception rollback (worker thread writes error to job store, emits done): tested indirectly via SSE routes in test_routes.py (the error path route test fires an error, confirms error JSON is returned). No dedicated thread-level test — acceptable for this tool's risk level.
+  - LOO manual loop path in `_loo_r2`: fallback returns 0.0, not a meaningful score. Tested implicitly (any score=0.0 would show "Poor" in UI). Explicit test not added — the no-op behavior is trivially correct.
+  - Frontend extrapolation highlighting and outlier mask UI: no browser automation — documented at Gate 5, not resolved at Gate 6.
+**Severity:** LOW
+**Change:** None.
+**Test Result:** PASS — 97 passed
+**Status:** RESOLVED — Gaps documented; acceptable for this tool's risk level.
+
+---
+
+## Gate 6 PM Sign-Off — 2026-05-06
+All Gate 6 role findings documented. CRITICAL findings: none. HIGH findings: none. MEDIUM finding: 1 (coverage gaps — RESOLVED, 11 new tests added). LOW findings: 4 (LOO fallback confirmed — RESOLVED; regression test for mask fix — RESOLVED; CI review — OPEN deferred Gate 7; remaining gaps — acceptable). Test result: 97 passed, 0 failed (up from 86). Gate 6 is CLOSED. Gate 7 may begin.
+
+---

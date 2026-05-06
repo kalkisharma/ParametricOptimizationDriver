@@ -1,3 +1,13 @@
+# =============================================================================
+# tests/test_sensitivity.py
+# Parametric Optimization Driver
+# Version: v1.1.5
+# Role: QA Engineer, Scientific Python Developer
+# Last modified: 2026-05-06
+# Description: Tests for sensitivity.py — Sobol S1 properties, dominant-input
+#              identification, and multi-output chart structure.
+# =============================================================================
+
 """Tests for sensitivity.py: Sobol S1 properties and dominant-input identification."""
 
 import numpy as np
@@ -59,3 +69,19 @@ def test_sobol_chart_json_structure():
     assert "data" in chart
     assert "layout" in chart
     assert len(chart["data"]) == len(OUTPUT_COLS)
+
+
+# ─── Gate 6: coverage gap tests ──────────────────────────────────────────────
+
+def test_sobol_chart_json_multiple_outputs():
+    """Chart with two output columns should have one trace per output."""
+    df = make_dataset(n=30, seed=42)
+    X = df[["speed", "pitch"]].values
+    Y = df[["thrust", "power"]].values
+    m = SurrogateModel(kernel="matern52", n_restarts=2, anisotropic=False)
+    m.fit(X, Y, ["speed", "pitch"], ["thrust", "power"])
+    chart = sobol_chart_json(m, BOUNDS, n_samples=128)
+    assert len(chart["data"]) == 2
+    trace_names = [t["name"] for t in chart["data"]]
+    assert "thrust" in trace_names
+    assert "power" in trace_names
