@@ -1,3 +1,14 @@
+# =============================================================================
+# app.py
+# Parametric Optimization Driver
+# Version: v1.1.1
+# Role: Full-stack Developer
+# Last modified: 2026-05-06
+# Description: Flask HTTP routes, SSE streaming, file upload/download handling,
+#              and standalone HTML report export. All ML logic lives in the
+#              domain modules (surrogate.py, optimization.py, etc.), not here.
+# =============================================================================
+
 """
 Flask application: routes, SSE streaming, file upload handling, report export.
 """
@@ -421,4 +432,8 @@ def _build_report_html(result, job_id):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, port=port, threaded=True)
+    # SECURITY: debug=True enables the Werkzeug interactive console, which allows
+    # arbitrary code execution for anyone who can reach the port and trigger an error.
+    # Gate behind FLASK_DEBUG env var so production/team deployments are safe by default.
+    debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes")
+    app.run(debug=debug, port=port, threaded=True)

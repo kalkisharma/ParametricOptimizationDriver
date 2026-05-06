@@ -1,3 +1,14 @@
+# =============================================================================
+# sensitivity.py
+# Parametric Optimization Driver
+# Version: v1.1.1
+# Role: Scientific Python Developer
+# Last modified: 2026-05-06
+# Description: First-order Sobol sensitivity indices via GP-surrogate Monte Carlo
+#              using the Saltelli (2002) estimator. Returns per-output S1 dicts
+#              and a Plotly bar chart JSON.
+# =============================================================================
+
 """
 First-order Sobol sensitivity indices via GP Monte Carlo (Saltelli method).
 Returns Plotly bar chart JSON per output column.

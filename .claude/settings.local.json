@@ -4,7 +4,21 @@
       "Bash(git init *)",
       "Bash(git config *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\kalki\\\\Documents\\\\ClaudeCode\\\\ParametricOptimizationDriver\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(git -C \"C:\\\\Users\\\\kalki\\\\Documents\\\\ClaudeCode\\\\ParametricOptimizationDriver\" remote -v)",
+      "Bash(git -C \"C:\\\\Users\\\\kalki\\\\Documents\\\\ClaudeCode\\\\ParametricOptimizationDriver\" log --oneline -3)",
+      "Bash(git push *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git fetch *)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(pip install *)",
+      "Bash(python -m pytest tests/ -q --timeout=60)",
+      "Bash(python -m pytest tests/test_constraints.py::test_eq_within_tolerance tests/test_constraints.py::test_input_constraint_injection tests/test_optimization.py::test_optimization_returns_correct_keys tests/test_sensitivity.py::test_sobol_sum_leq_one -v)",
+      "Bash(python -m pytest tests/test_acquisition.py::test_golden_output_max_variance -v)",
+      "Bash(python -c ' *)"
     ]
   }
 }

@@ -1,3 +1,14 @@
+// =============================================================================
+// main.js
+// Parametric Optimization Driver
+// Version: v1.1.1
+// Role: Full-stack Developer
+// Last modified: 2026-05-06
+// Description: Frontend stepper navigation, drag-and-drop CSV upload, SSE
+//              progress streaming, Plotly chart rendering, editable suggestions
+//              table with live GP re-check, config save/load, toast notifications.
+// =============================================================================
+
 /**
  * Parametric Optimization Driver — Frontend Logic
  * Stepper navigation, drag-and-drop upload, SSE progress, Plotly charts,

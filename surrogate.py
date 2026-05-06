@@ -1,3 +1,15 @@
+# =============================================================================
+# surrogate.py
+# Parametric Optimization Driver
+# Version: v1.1.1
+# Role: ML Engineer
+# Last modified: 2026-05-06
+# Description: Gaussian Process surrogate model — fits one GP per output column
+#              with automatic kernel selection (Matérn 5/2 vs RBF) via analytical
+#              LOO RMSE, input normalization, output standardization, and uncertainty
+#              calibrated prediction.
+# =============================================================================
+
 """
 Gaussian Process surrogate: fitting, prediction, uncertainty, and LOO diagnostics.
 Kernel auto-selected (Matérn 5/2 vs RBF) via leave-one-out cross-validation RMSE.

@@ -1,3 +1,14 @@
+# =============================================================================
+# preprocessing.py
+# Parametric Optimization Driver
+# Version: v1.1.1
+# Role: Scientific Python Developer
+# Last modified: 2026-05-06
+# Description: Data preprocessing — outlier detection using the union of IQR and
+#              Isolation Forest, NaN handling, and Plotly parallel-coordinates
+#              chart generation with outlier color overlay.
+# =============================================================================
+
 """
 Data preprocessing: outlier detection (IQR + Isolation Forest), NaN handling,
 and Plotly parallel-coordinates chart JSON.

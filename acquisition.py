@@ -1,3 +1,15 @@
+# =============================================================================
+# acquisition.py
+# Parametric Optimization Driver
+# Version: v1.1.1
+# Role: ML Engineer
+# Last modified: 2026-05-06
+# Description: Acquisition strategies for Bayesian optimization — MaxVariance
+#              (space-filling), ConstrainedEI (constrained optimization), and
+#              FeasibilitySearch (no-feasible-point fallback). All use
+#              scipy differential_evolution with kriging-believer batch selection.
+# =============================================================================
+
 """
 Acquisition strategies for Bayesian optimization.
 

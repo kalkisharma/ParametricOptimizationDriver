@@ -1,3 +1,14 @@
+# =============================================================================
+# constraints.py
+# Parametric Optimization Driver
+# Version: v1.1.1
+# Role: Security Engineer
+# Last modified: 2026-05-06
+# Description: Constraint evaluation for eq/leq/geq output constraints with
+#              constant, expression (sandboxed eval), or table-interpolated limits.
+#              Computes GP-based feasibility probabilities via normal CDF.
+# =============================================================================
+
 """
 Constraint evaluation: equality, leq, geq constraints with constant, expression,
 or table-interpolated limits. Computes GP-based feasibility probabilities.
@@ -53,8 +64,12 @@ def _resolve_limit(constraint: ConstraintDef, row_vars: dict) -> float:
         expr = constraint.limit_value
         scope = {**_SAFE_NUMPY, **row_vars}
         try:
+            # SECURITY: __builtins__ is set to an empty dict to block all builtins.
+            # Only _SAFE_NUMPY functions and row variable names are in scope.
             result = eval(expr, {"__builtins__": {}}, scope)  # noqa: S307
-        except NameError as exc:
+        except (NameError, KeyError) as exc:
+            # KeyError occurs in Python 3.14+ when code tries __builtins__['key']
+            # on the empty builtins dict — treat as equivalent to NameError.
             raise NameError(
                 f"Constraint expression references an undefined name: {exc}. "
                 f"Only numpy math functions and input variable names are allowed."
@@ -93,16 +108,27 @@ def p_feasible(
 ) -> float:
     """
     Probability that the GP output satisfies the constraint, given GP prediction (mu, sigma).
-    Uses normal CDF with sigma > 0.
+    Uses normal CDF with sigma floored at 1e-9 to prevent division by zero.
+
+    eq constraints use target/tolerance directly and do not call _resolve_limit,
+    because limit_value is unused for equality checks.
     """
     if sigma <= 0:
         sigma = 1e-9
 
+    ctype = constraint.ctype
+
+    if ctype == "eq":
+        # eq uses target + tolerance directly — limit_value is not relevant
+        # P(|output - target| <= tol) = Φ((tol - (mu-target))/sigma) - Φ((-tol - (mu-target))/sigma)
+        diff = mu - constraint.target
+        tol = constraint.tolerance
+        p = norm.cdf((tol - diff) / sigma) - norm.cdf((-tol - diff) / sigma)
+        return float(p)
+
     limit = _resolve_limit(constraint, row_vars)
     if np.isnan(limit):
-        return 0.5  # Unknown — treat as 50% feasible, emit a warning upstream
-
-    ctype = constraint.ctype
+        return 0.5  # Out-of-range table — treat as 50% feasible, warn upstream
 
     if ctype == "leq":
         # P(output <= limit) = Φ((limit - mu) / sigma)
@@ -111,13 +137,6 @@ def p_feasible(
     elif ctype == "geq":
         # P(output >= limit) = 1 - Φ((limit - mu) / sigma)
         return float(1 - norm.cdf((limit - mu) / sigma))
-
-    elif ctype == "eq":
-        # P(|output - target| <= tol) = Φ((tol - (mu-target))/sigma) - Φ((-tol - (mu-target))/sigma)
-        diff = mu - constraint.target
-        tol = constraint.tolerance
-        p = norm.cdf((tol - diff) / sigma) - norm.cdf((-tol - diff) / sigma)
-        return float(p)
 
     else:
         raise ValueError(f"Unknown constraint type: {ctype!r}")
@@ -128,11 +147,19 @@ def evaluate_deterministic(
 ) -> tuple[bool, float]:
     """
     Evaluate constraint on a known output value (no GP uncertainty).
-    Returns (satisfied, margin).
+    Returns (satisfied: bool, margin: float).
+
+    eq constraints use target/tolerance directly and skip _resolve_limit because
+    limit_value is not meaningful for equality checks (the target IS the limit).
     """
     output_val = row_vals[constraint.col]
-    limit = _resolve_limit(constraint, row_vals)
 
+    if constraint.ctype == "eq":
+        # eq uses target + tolerance directly — limit_value is not relevant
+        margin = constraint.tolerance - abs(output_val - constraint.target)
+        return abs(output_val - constraint.target) <= constraint.tolerance, margin
+
+    limit = _resolve_limit(constraint, row_vals)
     if np.isnan(limit):
         return False, float("nan")
 
@@ -142,9 +169,6 @@ def evaluate_deterministic(
     elif constraint.ctype == "geq":
         margin = output_val - limit
         return output_val >= limit, margin
-    elif constraint.ctype == "eq":
-        margin = constraint.tolerance - abs(output_val - constraint.target)
-        return abs(output_val - constraint.target) <= constraint.tolerance, margin
     else:
         raise ValueError(f"Unknown constraint type: {constraint.ctype!r}")
 
@@ -153,11 +177,18 @@ def evaluate_input_constraint(expr: str, row_vars: dict) -> bool:
     """
     Evaluate an input-space constraint expression (returns bool).
     expr example: "chord * twist <= 15.0"
+
+    SECURITY: Only _SAFE_NUMPY functions and input variable names are in scope.
+    __builtins__ is empty to block imports, exec, open, and all other builtins.
+    KeyError is caught alongside NameError because Python 3.14+ raises KeyError
+    when code indexes into the empty __builtins__ dict (e.g. __builtins__['__import__']).
     """
     scope = {**_SAFE_NUMPY, **row_vars}
     try:
+        # SECURITY: __builtins__ is set to an empty dict to block all builtins.
         result = eval(expr, {"__builtins__": {}}, scope)  # noqa: S307
-    except NameError as exc:
+    except (NameError, KeyError) as exc:
+        # KeyError occurs in Python 3.14+ when an injection tries __builtins__['key'].
         raise NameError(
             f"Input constraint references an undefined name: {exc}. "
             "Only numpy math functions and input variable names are allowed."

@@ -1,3 +1,14 @@
+/* =============================================================================
+   style.css
+   Parametric Optimization Driver
+   Version: v1.1.1
+   Role: UI Designer
+   Last modified: 2026-05-06
+   Description: Responsive CSS Grid layout with dark-mode default and light-mode
+                toggle via CSS custom properties. Covers stepper, forms, charts,
+                suggestions table, toasts, and Plotly container theming.
+   ============================================================================= */
+
 /* =====================================================================
    Parametric Optimization Driver — Main Stylesheet
    Dark mode default; light mode via [data-theme="light"] on <html>

@@ -1,3 +1,15 @@
+# =============================================================================
+# optimization.py
+# Parametric Optimization Driver
+# Version: v1.1.1
+# Role: ML Engineer
+# Last modified: 2026-05-06
+# Description: Pipeline orchestration for surrogate refinement (MaxVariance) and
+#              constrained Bayesian optimization (CEI/FeasibilitySearch). Accepts
+#              a DataFrame and config dict; emits SSE progress; returns a result
+#              dict with suggestions, Plotly charts, and diagnostics.
+# =============================================================================
+
 """
 Optimization pipeline orchestration.
 
