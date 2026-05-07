@@ -116,6 +116,7 @@ def sobol_chart_json(
         xaxis_title="Input variable",
         yaxis_title="First-order Sobol index S₁",
         yaxis_range=[0, 1.15],
+        colorway=["#5b8ef7", "#3ecf6a", "#f0b429", "#f06070", "#a78bfa", "#22d3ee"],
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font_color="#e4e4f0",

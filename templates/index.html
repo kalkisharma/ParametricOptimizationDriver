@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Parametric Optimization Driver</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=119">
+  <link rel="stylesheet" href="/static/css/style.css?v=120">
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" defer></script>
-  <script src="/static/js/main.js?v=119" defer></script>
+  <script src="/static/js/main.js?v=120" defer></script>
 </head>
 <body>
 <div id="app">
@@ -368,9 +368,19 @@
         </div>
         <div class="card chart-card wide" id="chart-scatter">
           <div class="card-title" style="display:flex; align-items:center; justify-content:space-between">
-            <span data-tip="Pairwise scatter plots of all input and output columns. Colour = selected output value (Turbo scale). Click any point to inspect its full row.">Scatter Matrix</span>
+            <span data-tip="Pairwise scatter plots of all input and output columns. Color any column (input or output) using the dropdown. Click any point to inspect its full row.">Scatter Matrix</span>
             <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted)">
-              Color by <select id="scatter-color-col" style="font-size:12px; width:150px"></select>
+              Color by <select id="scatter-color-col" style="font-size:12px; width:130px"></select>
+              &nbsp;Scale
+              <select id="scatter-colorscale" style="font-size:12px; width:80px">
+                <option value="Viridis" selected>Viridis</option>
+                <option value="Turbo">Turbo</option>
+                <option value="Plasma">Plasma</option>
+                <option value="Inferno">Inferno</option>
+                <option value="Magma">Magma</option>
+                <option value="Cividis">Cividis</option>
+                <option value="RdBu">RdBu</option>
+              </select>
               &nbsp;Size
               <input type="range" id="scatter-marker-size" min="2" max="12" value="6"
                      style="width:70px; vertical-align:middle; cursor:pointer">

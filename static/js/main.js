@@ -143,11 +143,11 @@ el('theme-toggle').onclick = () => {
   const isDark = html.getAttribute('data-theme') === 'dark';
   html.setAttribute('data-theme', isDark ? 'light' : 'dark');
   el('theme-toggle').textContent = isDark ? '🌙' : '☀️';
-  // Re-apply theme colours to all rendered Plotly charts
+  // Re-apply theme colours to all rendered Plotly charts (skip scatter — handled by _applyScatterTheme)
   const newFontColor = isDark ? '#1a1a2e' : '#e4e4f0';
   const newGridColor = isDark ? '#d0d4e8' : '#2e2e52';
   $$('.js-plotly-plot').forEach(div => {
-    if (div.data) {
+    if (div.data && div.id !== 'chart-scatter-plot') {
       Plotly.relayout(div, {
         'font.color': newFontColor,
         'xaxis.gridcolor': newGridColor,
@@ -155,6 +155,7 @@ el('theme-toggle').onclick = () => {
       });
     }
   });
+  if (el('chart-scatter-plot')?.data) _applyScatterTheme();
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1134,6 +1135,20 @@ function applyTheme(layout) {
            yaxis: { ...layout.yaxis, gridcolor: gridColor } };
 }
 
+function _applyScatterTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const fontColor = isLight ? '#1a1a2e' : '#e4e4f0';
+  const gridColor = isLight ? 'rgba(0,0,30,0.10)' : 'rgba(200,200,230,0.22)';
+  const plotBg    = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.10)';
+  const n = STATE.scatterNCols || 1;
+  const upd = { 'paper_bgcolor': 'rgba(0,0,0,0)', 'plot_bgcolor': plotBg, 'font.color': fontColor };
+  for (let i = 1; i <= n; i++) {
+    upd[`xaxis${i === 1 ? '' : i}.gridcolor`] = gridColor;
+    upd[`yaxis${i === 1 ? '' : i}.gridcolor`] = gridColor;
+  }
+  Plotly.relayout('chart-scatter-plot', upd);
+}
+
 let _uncMapAbortCtrl = null;
 
 async function refreshUncertaintyMap() {
@@ -1177,43 +1192,50 @@ function renderCharts(plots, uncAxes) {
   }
 
   if (plots.scatter_matrix) {
+    // Do NOT call applyTheme() here — it spreads xaxis/yaxis and breaks SPLOM axis-matching refs.
+    // The server layout is dark-themed; _applyScatterTheme() handles live theme switching safely.
     Plotly.react('chart-scatter-plot', plots.scatter_matrix.data,
-      applyTheme(plots.scatter_matrix.layout), plotCfg);
+      plots.scatter_matrix.layout, plotCfg);
+    STATE.scatterNCols = (plots.scatter_matrix.data[0]?.dimensions?.length) || 1;
     el('chart-scatter-plot').on('plotly_click', data => {
       const pt = data.points[0];
       if (pt && STATE.lastResult) showRowSidebar({ x: pt.x, y: pt.y, index: pt.pointIndex });
     });
 
-    // Populate and wire scatter color dropdown
+    // Populate color dropdown from all columns (inputs + outputs)
     const colorData = STATE.lastResult?.scatter_color_data || {};
-    const outputCols = Object.keys(colorData);
+    const allColorCols = Object.keys(colorData);
     const colorSel = el('scatter-color-col');
-    colorSel.innerHTML = outputCols.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
-    colorSel.disabled = outputCols.length === 0;
+    colorSel.innerHTML = allColorCols.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+    colorSel.disabled = allColorCols.length === 0;
+    // Pre-select the first output column (matches server's initial color)
+    const firstOut = STATE.lastResult?.plots?.scatter_matrix
+      ? allColorCols.find(c => !buildRunPayload().input_cols.includes(c)) || allColorCols[0]
+      : allColorCols[0];
+    if (firstOut) colorSel.value = firstOut;
+
+    // Use restyle + relayout — never spread SPLOM trace data into Plotly.react
     colorSel.onchange = () => {
-      const selected = colorSel.value;
-      const vals = colorData[selected];
-      if (!vals || !plots.scatter_matrix.data[0]) return;
-      const updatedData = plots.scatter_matrix.data.map((t, i) =>
-        i === 0 ? { ...t, marker: { ...t.marker, color: vals } } : t
-      );
-      const updatedLayout = { ...plots.scatter_matrix.layout };
-      if (updatedLayout.coloraxis) {
-        updatedLayout.coloraxis = {
-          ...updatedLayout.coloraxis,
-          colorbar: { ...(updatedLayout.coloraxis.colorbar || {}), title: { text: selected } },
-        };
-      }
-      Plotly.react('chart-scatter-plot', updatedData, applyTheme(updatedLayout), plotCfg);
+      const vals = colorData[colorSel.value];
+      if (!vals) return;
+      Plotly.restyle('chart-scatter-plot', { 'marker.color': [vals] }, [0]);
+      Plotly.relayout('chart-scatter-plot', { 'coloraxis.colorbar.title.text': colorSel.value });
     };
+
+    // Colorscale picker
+    const scaleSel = el('scatter-colorscale');
+    if (scaleSel) {
+      scaleSel.value = 'Viridis';
+      scaleSel.onchange = () =>
+        Plotly.relayout('chart-scatter-plot', { 'coloraxis.colorscale': scaleSel.value });
+    }
 
     // Marker size slider
     const sizeSlider = el('scatter-marker-size');
     if (sizeSlider) {
       sizeSlider.value = '6';
-      sizeSlider.oninput = () => {
+      sizeSlider.oninput = () =>
         Plotly.restyle('chart-scatter-plot', { 'marker.size': parseInt(sizeSlider.value) });
-      };
     }
   }
 

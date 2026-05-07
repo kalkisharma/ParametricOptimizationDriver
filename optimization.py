@@ -221,22 +221,16 @@ def _scatter_matrix_json(
     cols_to_plot_df = df[cols_to_plot]
     n = len(cols_to_plot)
 
-    effective_color = color_col if (color_col and color_col in cols_to_plot_df.columns) else None
+    # Always use continuous color — fall back to first plotted column if color_col not available
+    effective_color = color_col if (color_col and color_col in cols_to_plot_df.columns) else cols_to_plot[0]
 
-    if effective_color:
-        fig = px.scatter_matrix(
-            cols_to_plot_df,
-            dimensions=cols_to_plot,
-            color=cols_to_plot_df[effective_color],
-            color_continuous_scale="Turbo",
-        )
-        fig.update_coloraxes(colorbar_title_text=effective_color, colorbar_thickness=12)
-    else:
-        fig = px.scatter_matrix(
-            cols_to_plot_df,
-            dimensions=cols_to_plot,
-            color_discrete_sequence=["#5b8ef7"],
-        )
+    fig = px.scatter_matrix(
+        cols_to_plot_df,
+        dimensions=cols_to_plot,
+        color=cols_to_plot_df[effective_color],
+        color_continuous_scale="Viridis",
+    )
+    fig.update_coloraxes(colorbar_title_text=effective_color, colorbar_thickness=15)
 
     fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=6, marker_opacity=0.65)
     fig.update_layout(
@@ -247,8 +241,8 @@ def _scatter_matrix_json(
         margin=dict(l=80, r=20, t=40, b=80),
         hoverlabel=dict(bgcolor="#1e1e3a", font=dict(color="#e4e4f0", size=12), bordercolor="#4a4a7a"),
     )
-    fig.update_xaxes(gridwidth=0.5, gridcolor="rgba(180,180,200,0.15)", zeroline=False)
-    fig.update_yaxes(gridwidth=0.5, gridcolor="rgba(180,180,200,0.15)", zeroline=False)
+    fig.update_xaxes(gridwidth=0.5, gridcolor="rgba(200,200,230,0.22)", zeroline=False)
+    fig.update_yaxes(gridwidth=0.5, gridcolor="rgba(200,200,230,0.22)", zeroline=False)
     return json.loads(fig.to_json())
 
 
@@ -459,7 +453,7 @@ def run_refinement(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
     x_ax = input_cols[0]
     y_ax = input_cols[1] if len(input_cols) > 1 else input_cols[0]
     first_out = output_cols[0] if output_cols else None
-    scatter_color_data = {col: df_clean[col].tolist() for col in output_cols if col in df_clean.columns}
+    scatter_color_data = {col: df_clean[col].tolist() for col in input_cols + output_cols if col in df_clean.columns}
     plots = {
         "scatter_matrix": _scatter_matrix_json(df_clean, input_cols, output_cols, color_col=first_out),
         "uncertainty_map": _uncertainty_heatmap_json(surrogate, bounds, x_ax, y_ax),
@@ -578,7 +572,7 @@ def run_optimization(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
     x_ax = input_cols[0]
     y_ax = input_cols[1] if len(input_cols) > 1 else input_cols[0]
     first_out = output_cols[0] if output_cols else None
-    scatter_color_data = {col: df_clean[col].tolist() for col in output_cols if col in df_clean.columns}
+    scatter_color_data = {col: df_clean[col].tolist() for col in input_cols + output_cols if col in df_clean.columns}
     plots = {
         "scatter_matrix": _scatter_matrix_json(df_clean, input_cols, output_cols, color_col=first_out),
         "uncertainty_map": _uncertainty_heatmap_json(surrogate, bounds, x_ax, y_ax),
