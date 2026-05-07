@@ -311,6 +311,53 @@ Eight changes approved through a multi-role team review (UX, ML Engineer, Full-s
 - `_bounds` now stored in `_jobs[job_id]["_bounds"]` (popped from result like `_surrogate`).
 - `refreshUncertaintyMap()` in `main.js` uses `AbortController` to cancel in-flight requests on rapid dropdown changes. Dropdowns disabled when only one input column is configured.
 
+### Security Hardening (2026-05-07)
+
+Threat-model review conducted for defense contractor (private network) deployment context. Seven fixes applied across five files. All 118 tests pass on Python 3.11 and 3.12 CI (commit `dda01ca`).
+
+**C1 — XSS: column names injected raw into DOM via innerHTML (main.js)**
+- Root cause: 12 sites in `main.js` interpolated user-supplied column names directly into `innerHTML` template literals. A column named `<img src=x onerror="...">` would execute in the browser.
+- Fix: all 12 sites wrapped in the existing `escHtml()` function — preview table headers, column assignment cards, objective/constraint/scatter/uncertainty dropdowns, weight row spans and `data-col` attributes, diagnostics table cells, suggestions table headers and `data-col` attributes, constraint table limit column select, and condition-cols placeholder.
+
+**C2 — XSS: column names and job_id unescaped in HTML report export (app.py)**
+- Root cause: `_build_report_html()` interpolated `col`, chart `name`, and `job_id` directly into HTML via f-strings.
+- Fix: `from html import escape` (stdlib); `escape()` applied to all three in diagnostics rows, chart `<h3>` headings, and the meta paragraph.
+- Verified: HTML report with XSS column name renders `&lt;img src=x onerror=...&gt;` in table/heading context. Residual appearances are inside `<script>` blocks as Plotly JSON string values — not HTML-parsed by the browser; Plotly renders axis labels as SVG text nodes, not innerHTML (acknowledged low-risk M2).
+
+**C3 — Info leakage: full traceback and config snapshot sent to client unconditionally (app.py)**
+- Root cause: SSE error payload always included `traceback` (absolute file paths, module names) and `config_snapshot` (full user config).
+- Fix: both fields gated on `app.debug`. Production deployments (default) emit only `message` and `last_frames` (already stripped to `filename.py:line in func` with no absolute paths).
+
+**H1 — Memory leak and data retention: job store had no TTL (app.py)**
+- Root cause: `_jobs` dict accumulated forever — fitted GP surrogates, training data, and pipeline results held in memory indefinitely.
+- Fix: `JOB_TTL_SECONDS` (default 60 min, overridable via `JOB_TTL_MINUTES` env var). Each job stores `created_at = time.time()`. `_evict_expired_jobs()` is called at the top of every `/run` request and removes stale entries with their CSV files.
+
+**H2 — Temp file accumulation: uploaded CSVs never deleted (app.py)**
+- Root cause: UUID-named CSV files in `%TEMP%\cfd_opt_uploads\` were written on upload and never cleaned up.
+- Fix: CSV deletion tied to H1 TTL eviction loop. Additionally, `atexit.register(_cleanup_all_uploads)` deletes all remaining CSV files when the process exits.
+
+**H3 — Missing HTTP security headers (app.py)**
+- Fix: `@app.after_request` hook adds `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`, and `Referrer-Policy: strict-origin-when-cross-origin` to every response. CSP omitted — the exported HTML report uses inline `<script>` blocks, which would require `unsafe-inline` and defeat the purpose.
+
+**H4 — Path traversal: `str.startswith()` used for upload directory containment check (constraints.py)**
+- Root cause: `str(path).startswith(str(upload_dir))` is defeated by path components like `../` that resolve outside the directory but whose string representation starts with the correct prefix on Windows.
+- Fix: replaced with `path.is_relative_to(upload_dir)` (Python 3.9+, which this project requires).
+
+**M3 — Unused dependencies expand attack surface (requirements.txt)**
+- `gitpython==3.1.50` and `PyGithub==2.9.1` were only used by the one-time `setup_github.py` repo-creation script, not the app itself. Removed from `requirements.txt`.
+
+**Deployment-layer findings (not app code)**
+The following are real risks but belong at the infrastructure layer, not inside a Flask dev server:
+
+| Finding | Correct fix location |
+|---|---|
+| No authentication | Corporate SSO / reverse proxy (nginx + SAML/OAuth2) behind internal VPN |
+| No HTTPS/TLS | TLS termination at reverse proxy (nginx, IIS, or load balancer) |
+| No rate limiting | nginx `limit_req` or API gateway |
+| No audit logging | Centralized SIEM (Splunk, Elastic); DFARS/NIST SP 800-171 requires more than file logs |
+| No CSRF protection | Add Flask-WTF after authentication is in place |
+| Debug mode | Document: never set `FLASK_DEBUG=1` on any server exposed beyond localhost |
+
 ---
 
 ## Dependencies
@@ -322,8 +369,6 @@ pandas
 scikit-learn   # includes joblib (used directly for parallel GP fitting)
 scipy
 plotly
-gitpython
-PyGithub
 pytest
 ```
 
