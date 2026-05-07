@@ -182,7 +182,7 @@ def _build_interpolator(constraint: ConstraintDef) -> LinearNDInterpolator:
     # SECURITY: Resolve the path and confirm it is inside the upload directory.
     upload_dir = (Path(tempfile.gettempdir()) / "cfd_opt_uploads").resolve()
     path = Path(constraint.limit_value).resolve()
-    if not str(path).startswith(str(upload_dir)):
+    if not path.is_relative_to(upload_dir):
         raise ValueError(
             f"Constraint table path is outside the upload directory. "
             f"Only files uploaded via /upload_constraint_table are permitted."

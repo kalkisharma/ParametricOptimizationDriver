@@ -74,6 +74,7 @@ Optional **input-space constraints** (Python expressions on input variables only
 | **Data Visualization Specialist** | Colorscale selection and perceptual uniformity, colorblind accessibility, contrast ratios on both themes, chart density and information hierarchy, axis/label legibility |
 | **Instructional Designer** | Tooltip copy, help text, field labels — plain-English ML concepts for non-ML users |
 | **QA Engineer** | pytest suite design, fixture strategy, CI matrix, regression coverage |
+| **Security Engineer** | Input validation, authentication architecture, injection defenses, secret management, HTTP hardening headers, audit logging, dependency scanning, threat-model review |
 
 ---
 

@@ -306,7 +306,7 @@ function applyUploadResult(data, filename) {
 
 function renderPreviewTable(rows, cols, stats) {
   const table = el('preview-table');
-  const thead = `<thead><tr>${cols.map(c => `<th title="min:${stats[c]?.min} max:${stats[c]?.max}">${c}</th>`).join('')}</tr></thead>`;
+  const thead = `<thead><tr>${cols.map(c => `<th title="min:${stats[c]?.min} max:${stats[c]?.max}">${escHtml(c)}</th>`).join('')}</tr></thead>`;
   const tbody = '<tbody>' + rows.map(row =>
     '<tr>' + cols.map(c => {
       const v = row[c];
@@ -446,7 +446,7 @@ function buildColumnAssignment() {
     card.className = 'col-card';
     card.dataset.col = col;
     card.innerHTML = `
-      <div class="col-name">${col}</div>
+      <div class="col-name">${escHtml(col)}</div>
       <div class="col-stats">min ${s.min?.toFixed(3)??'–'} · max ${s.max?.toFixed(3)??'–'} · ${s.nan_count??0} NaN</div>
       <div class="form-row" style="margin:6px 0 0">
         <select class="col-role" style="flex:1"
@@ -552,14 +552,14 @@ function populateObjectiveSelects() {
   const allCols = [...inputs, ...outputs];
 
   const objSelect = el('obj-column');
-  objSelect.innerHTML = allCols.map(c => `<option value="${c}">${c}</option>`).join('');
+  objSelect.innerHTML = allCols.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
 
   // Weight rows
   const weightRows = el('weight-rows');
   weightRows.innerHTML = allCols.map(c => `
     <div class="weight-row">
-      <span style="min-width:100px;font-family:var(--font-mono);font-size:12px">${c}</span>
-      <input type="number" class="weight-input" data-col="${c}" value="0" step="0.1" style="width:80px">
+      <span style="min-width:100px;font-family:var(--font-mono);font-size:12px">${escHtml(c)}</span>
+      <input type="number" class="weight-input" data-col="${escHtml(c)}" value="0" step="0.1" style="width:80px">
     </div>`).join('');
 }
 
@@ -606,7 +606,7 @@ function addConstraintRow(cfg = null) {
     <button class="remove-btn" title="Remove">✕</button>
     <div class="form-group" style="min-width:130px">
       <label>Output column</label>
-      <select class="c-col">${outputs.map(c=>`<option>${c}</option>`).join('')}</select>
+      <select class="c-col">${outputs.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')}</select>
     </div>
     <div class="form-group" style="min-width:100px">
       <label>Type</label>
@@ -680,9 +680,9 @@ function addConstraintRow(cfg = null) {
     colDiv.classList.remove('hidden');
     colDiv.innerHTML = `
       <div class="form-group"><label>Condition cols (comma-sep)</label>
-        <input type="text" class="c-table-cond-cols" placeholder="${data.columns.slice(0,-1).join(',')}" style="font-size:12px"></div>
+        <input type="text" class="c-table-cond-cols" placeholder="${escHtml(data.columns.slice(0,-1).join(','))}" style="font-size:12px"></div>
       <div class="form-group"><label>Limit column</label>
-        <select class="c-table-limit-col">${data.columns.map(c=>`<option>${c}</option>`).join('')}</select></div>`;
+        <select class="c-table-limit-col">${data.columns.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')}</select></div>`;
     toast('success', 'Table uploaded', `${data.n_rows} rows, cols: ${data.columns.join(', ')}`);
   });
 
@@ -1115,7 +1115,7 @@ function renderDiagnostics(diag) {
     else if (r2 >= 0.80) badge = '<span class="badge badge-fair">⚠ Fair</span>';
     else                 badge = '<span class="badge badge-poor">✗ Poor</span>';
     return `<tr>
-      <td class="text-mono">${col}</td>
+      <td class="text-mono">${escHtml(col)}</td>
       <td>${r2.toFixed(4)}</td>
       <td>${(d.rmse ?? 0).toFixed(5)}</td>
       <td>${badge}</td>
@@ -1188,7 +1188,7 @@ function renderCharts(plots, uncAxes) {
     const colorData = STATE.lastResult?.scatter_color_data || {};
     const outputCols = Object.keys(colorData);
     const colorSel = el('scatter-color-col');
-    colorSel.innerHTML = outputCols.map(c => `<option value="${c}">${c}</option>`).join('');
+    colorSel.innerHTML = outputCols.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
     colorSel.disabled = outputCols.length === 0;
     colorSel.onchange = () => {
       const selected = colorSel.value;
@@ -1230,7 +1230,7 @@ function renderCharts(plots, uncAxes) {
   const inputCols = buildRunPayload().input_cols;
   const hasMultipleInputs = inputCols.length >= 2;
   [el('unc-xaxis'), el('unc-yaxis')].forEach((sel, idx) => {
-    sel.innerHTML = inputCols.map(c => `<option value="${c}">${c}</option>`).join('');
+    sel.innerHTML = inputCols.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
     if (inputCols[idx]) sel.value = inputCols[idx];
     sel.disabled = !hasMultipleInputs;
     sel.onchange = refreshUncertaintyMap;
@@ -1249,7 +1249,7 @@ function renderSuggestionsTable(suggestions, result) {
   const thead = `<thead><tr>${cols.map(c => {
     const isInput = inputCols.includes(c);
     const cls = isInput ? '' : ' class="pred-col"';
-    return `<th${cls}>${c}</th>`;
+    return `<th${cls}>${escHtml(c)}</th>`;
   }).join('')}</tr></thead>`;
 
   const tbody = '<tbody>' + suggestions.map((row, ri) => {
@@ -1262,7 +1262,7 @@ function renderSuggestionsTable(suggestions, result) {
         const s = STATE.stats[col];
         const isExtrap = s && typeof v === 'number' && (v < s.min || v > s.max);
         const cls = isExtrap ? ' class="extrap-cell"' : '';
-        return `<td contenteditable="true"${cls} data-col="${col}" data-row="${ri}">${display}</td>`;
+        return `<td contenteditable="true"${cls} data-col="${escHtml(col)}" data-row="${ri}">${display}</td>`;
       }
       const isViolation = col.startsWith('p_feasible_') && typeof v === 'number' && v < 0.5;
       return `<td class="${isViolation ? 'violation' : 'pred-col'}">${display}</td>`;

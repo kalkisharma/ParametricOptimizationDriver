@@ -13,15 +13,18 @@
 Flask application: routes, SSE streaming, file upload handling, report export.
 """
 
+import atexit
 import io
 import json
 import os
 import queue
 import tempfile
 import threading
+import time
 import traceback
 import uuid
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 
 import numpy as np
@@ -45,11 +48,45 @@ class _SafeEncoder(json.JSONEncoder):
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB upload limit
 
+
+@app.after_request
+def _add_security_headers(response):
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "cfd_opt_uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # In-memory store for active jobs: job_id -> {queue, result, error}
 _jobs: dict[str, dict] = {}
+
+JOB_TTL_SECONDS = int(os.environ.get("JOB_TTL_MINUTES", "60")) * 60
+
+
+def _evict_expired_jobs() -> None:
+    """Remove jobs older than JOB_TTL_SECONDS and delete their uploaded CSV files."""
+    cutoff = time.time() - JOB_TTL_SECONDS
+    expired = [jid for jid, job in list(_jobs.items()) if job.get("created_at", 0) < cutoff]
+    for jid in expired:
+        try:
+            (UPLOAD_DIR / f"{jid}.csv").unlink(missing_ok=True)
+        except OSError:
+            pass
+        _jobs.pop(jid, None)
+
+
+def _cleanup_all_uploads() -> None:
+    for jid in list(_jobs):
+        try:
+            (UPLOAD_DIR / f"{jid}.csv").unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+atexit.register(_cleanup_all_uploads)
 
 
 # ---------------------------------------------------------------------------
@@ -161,9 +198,11 @@ def run():
     if not payload.get("output_cols"):
         return jsonify({"error": "At least one output column is required", "field": "output_cols"}), 400
 
+    _evict_expired_jobs()
+
     # Each job gets its own message queue
     msg_queue: queue.Queue = queue.Queue()
-    _jobs[job_id] = {"queue": msg_queue, "result": None, "error": None}
+    _jobs[job_id] = {"queue": msg_queue, "result": None, "error": None, "created_at": time.time()}
 
     def worker():
         try:
@@ -177,13 +216,11 @@ def run():
                 f.filename.replace("\\", "/").split("/")[-1] + f":{f.lineno} in {f.name}"
                 for f in frames[-3:]
             ]
-            msg_queue.put({
-                "type": "error",
-                "message": str(exc),
-                "traceback": full_tb,
-                "last_frames": last_frames,
-                "config_snapshot": payload,
-            })
+            err_payload: dict = {"type": "error", "message": str(exc), "last_frames": last_frames}
+            if app.debug:
+                err_payload["traceback"] = full_tb
+                err_payload["config_snapshot"] = payload
+            msg_queue.put(err_payload)
         finally:
             msg_queue.put({"type": "done"})
 
@@ -412,7 +449,7 @@ def _build_report_html(result, job_id):
             badge = '<span class="badge fair">⚠ Fair</span>'
         else:
             badge = '<span class="badge poor">✗ Poor</span>'
-        diag_rows += f"<tr><td>{col}</td><td>{r2:.4f}</td><td>{rmse:.4f}</td><td>{badge}</td></tr>"
+        diag_rows += f"<tr><td>{escape(col)}</td><td>{r2:.4f}</td><td>{rmse:.4f}</td><td>{badge}</td></tr>"
 
     # Build Plotly chart divs
     chart_divs = ""
@@ -420,7 +457,7 @@ def _build_report_html(result, job_id):
         div_id = f"chart_{name}"
         chart_divs += f"""
         <div class="chart-block">
-          <h3>{name.replace('_', ' ').title()}</h3>
+          <h3>{escape(name.replace('_', ' ').title())}</h3>
           <div id="{div_id}"></div>
           <script>Plotly.react('{div_id}', {json.dumps(fig_json.get('data', []))},
             {json.dumps(fig_json.get('layout', {}))});</script>
@@ -454,7 +491,7 @@ def _build_report_html(result, job_id):
 </head>
 <body>
 <h1>Optimization Report</h1>
-<p class="meta">Generated: {timestamp} &nbsp;|&nbsp; Job: {job_id}</p>
+<p class="meta">Generated: {timestamp} &nbsp;|&nbsp; Job: {escape(job_id)}</p>
 
 <h2>Surrogate Diagnostics</h2>
 <table class="diag-table">
