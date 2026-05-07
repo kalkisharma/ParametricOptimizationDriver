@@ -753,7 +753,7 @@ function getInputConstraints() {
 // Validation
 // ─────────────────────────────────────────────────────────────────────────────
 function validateConfig() {
-  if (STATE.numericColumns.length === 0) { renderValidationErrors([]); return; }
+  if (STATE.numericColumns.length === 0) { el('config-error-banner')?.classList.remove('visible'); return; }
   _clearFieldErrors();
   const errors = [];
   const { inputs, outputs, bounds, integerCols } = getColumnConfig();
@@ -1212,12 +1212,7 @@ function renderCharts(plots, uncAxes) {
     if (sizeSlider) {
       sizeSlider.value = '6';
       sizeSlider.oninput = () => {
-        const sz = parseInt(sizeSlider.value);
-        const div = document.getElementById('chart-scatter-plot');
-        if (!div || !div.data) return;
-        Plotly.react('chart-scatter-plot',
-          div.data.map(t => ({ ...t, marker: { ...t.marker, size: sz } })),
-          applyTheme(plots.scatter_matrix.layout), plotCfg);
+        Plotly.restyle('chart-scatter-plot', { 'marker.size': parseInt(sizeSlider.value) });
       };
     }
   }

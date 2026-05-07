@@ -62,6 +62,21 @@ Optional **input-space constraints** (Python expressions on input variables only
 
 ---
 
+## Team Roster
+
+| Role | Remit |
+|---|---|
+| **Full-stack Developer** | Flask routes, SSE streaming, API contracts, frontend JS architecture |
+| **ML Engineer** | GP surrogate, acquisition functions, Sobol sensitivity, parallel fitting |
+| **UX Designer** | Stepper wizard flow, onboarding, error messaging, user mental models |
+| **UI Designer** | Component layout, CSS, chart aesthetics, dark/light theme, responsive grid |
+| **Interaction Designer** | In-chart interactivity — click, hover, dropdown re-renders, live table edits |
+| **Data Visualization Specialist** | Colorscale selection and perceptual uniformity, colorblind accessibility, contrast ratios on both themes, chart density and information hierarchy, axis/label legibility |
+| **Instructional Designer** | Tooltip copy, help text, field labels — plain-English ML concepts for non-ML users |
+| **QA Engineer** | pytest suite design, fixture strategy, CI matrix, regression coverage |
+
+---
+
 ## UI/UX Design
 
 ### Layout & Theme

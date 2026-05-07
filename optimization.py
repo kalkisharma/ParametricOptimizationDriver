@@ -228,7 +228,7 @@ def _scatter_matrix_json(
             cols_to_plot_df,
             dimensions=cols_to_plot,
             color=cols_to_plot_df[effective_color],
-            color_continuous_scale="Plasma",
+            color_continuous_scale="Turbo",
         )
         fig.update_coloraxes(colorbar_title_text=effective_color, colorbar_thickness=12)
     else:
@@ -241,7 +241,7 @@ def _scatter_matrix_json(
     fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=6, marker_opacity=0.65)
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(255,255,255,0.04)",
+        plot_bgcolor="rgba(255,255,255,0.10)",
         font=dict(color="#e4e4f0", size=10),
         height=max(500, n * 120),
         margin=dict(l=80, r=20, t=40, b=80),
