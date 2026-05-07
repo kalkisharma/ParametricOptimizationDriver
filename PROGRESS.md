@@ -1,7 +1,7 @@
 # Parametric Optimization Driver — Design Progress
 
-**Date:** 2026-05-01  
-**Status:** v1.1 — post-launch bug fixes and UX improvements in progress
+**Date:** 2026-05-07  
+**Status:** v1.1.7 — 8 UX and performance improvements shipped
 
 ---
 
@@ -88,9 +88,9 @@ Optional **input-space constraints** (Python expressions on input variables only
 | Chart | Details |
 |---|---|
 | LOO diagnostics table | R² + RMSE per output; color + icon + text label: ✓ Good (≥0.95) / ⚠ Fair (0.80–0.95) / ✗ Poor (<0.80) |
-| Sobol sensitivity | First-order S1 bar chart per output (GP-based Monte Carlo) |
-| Scatter matrix | Input-output pairwise plots colored by GP prediction; click point → full-row sidebar |
-| Uncertainty heatmap | 2D GP std slice; user-selectable axes; click point → full-row sidebar |
+| Sobol sensitivity | First-order S1 bar chart per output (GP-based Monte Carlo); legend below chart; hover shows `S₁ = value` to 3 dp |
+| Scatter matrix | Input-output pairwise plots; output-selector dropdown for Plasma colorscale; lifted plot background; click point → full-row sidebar |
+| Uncertainty heatmap | 2D GP std slice; axis dropdowns functional (live re-render via `/uncertainty_map`); click point → full-row sidebar |
 | Convergence chart | Best feasible objective vs. row index; CEI-threshold banner if triggered |
 | Suggested cases table | Editable cells; live GP re-check on change; constraint violations highlighted yellow |
 
@@ -147,7 +147,8 @@ Generated programmatically in `conftest.py` using analytic functions with known 
 - Outlier detection, 100 rows: < 2 seconds
 
 ### CI/CD
-- **GitHub Actions** (`.github/workflows/test.yml`): `pip install -r requirements.txt && pytest` on Python 3.11, triggered on every push
+- **GitHub Actions** (`.github/workflows/test.yml`): `pip install -r requirements.txt && pytest` on Python 3.11 and 3.12 (matrix), triggered on every push and PR
+- Uses `actions/checkout@v6` and `actions/setup-python@v6` (Node 24 runners)
 - Pass/fail badge shown in README
 
 ---
@@ -208,6 +209,7 @@ ParametricOptimizationDriver/
 | 13 | UX: enhanced error reporting — inline field errors, expandable banner, structured pipeline error toast | ✅ Complete |
 | 14 | Bug fixes: SSE JSON crash, run button double-click, scatter_matrix Plotly crash, numpy type serialization | ✅ Complete |
 | 15 | UX: run button first-click fix, responsive charts, dark hover labels, contextual tooltip system | ✅ Complete |
+| 16 | v1.1.7: 8 UX and performance improvements — see below | ✅ Complete |
 
 ---
 
@@ -256,6 +258,43 @@ ParametricOptimizationDriver/
 - CSS: `[data-tip]` elements get dotted underline + `cursor: help`.
 - Tooltips (plain English + formula where relevant) on: column role select, integer checkbox, bounds labels, mode buttons, LOO R² / RMSE headers, Sobol S₁ title, Convergence title, Scatter Matrix title, Uncertainty Map title.
 
+### UX and Performance Improvements (2026-05-07) — v1.1.7
+
+Eight changes approved through a multi-role team review (UX, ML Engineer, Full-stack, HPC context). All 97 tests green on Python 3.11 and 3.12 CI.
+
+**Issue 1 — Default column role to Input**
+- `buildColumnAssignment()` now renders all column cards with `<option value="input" selected>`, removing the false "No input columns assigned" error that appeared on initial Configure step load before the user had touched anything.
+
+**Issue 2 — Stacked Min/Max bounds**
+- `.bounds-row` in `style.css` changed to `flex-direction: column; align-items: stretch`. Each label+input pair wrapped in a `.bound-field` div. Removes crowding on narrow column cards; makes tab order natural (Min → Max); gives each input the full card width.
+
+**Issue 3 — Advanced GP Settings tooltips**
+- `data-tip` attributes added to the `<summary>` and all four parameter `<label>` elements in the Advanced GP Settings block. Tooltip max-width widened to 320 px to accommodate the longer anisotropic/isotropic explanation. Fills the documented teaching gap for non-ML users at zero architectural cost.
+
+**Issue 4 — Optional parallel GP fitting**
+- `surrogate.py`: `_fit_single_output()` helper extracted; `fit()` uses `joblib.Parallel(prefer="threads")` when `n_jobs > 1`. Thread-safe: X scaler fit before parallel section (read-only); each output has its own GP and y-scaler (no shared mutable state).
+- `sensitivity.py`: `sobol_chart_json()` parallelises the per-output outer loop; `sobol_first_order()` vectorises the inner AB_i predict loop — all n_inputs matrices stacked and predicted in a single `surrogate.predict()` call.
+- `optimization.py`: per-output SSE progress messages removed from `_fit_surrogate()` (prerequisite for thread safety); `n_jobs` computed from config and passed to both fitting and sensitivity.
+- UI: "Parallel GP fitting" checkbox (OFF by default — safe for shared HPC head nodes) + "Max workers" field + cpu-count display + always-visible HPC warning text when enabled. Checkbox auto-disabled when only 1 output is configured. `GET /system_info` endpoint returns `{"cpu_count": N}` populated on page load.
+
+**Issue 5 — Sensitivity legend below chart**
+- `legend=dict(orientation="h", y=-0.2, xanchor="center", x=0.5, yanchor="top")` — moves the horizontal legend below the x-axis where it belongs; avoids crowding the top margin. Bottom margin widened to 80 px.
+
+**Issue 6 — Sensitivity bar hover tooltip**
+- `hovertemplate="%{x}: S₁ = %{y:.3f}<extra>%{fullData.name}</extra>"` — concise, uses the correct symbol, 3 dp precision, output name in the secondary bubble.
+
+**Issue 7 — Scatter matrix aesthetics**
+- Plasma colorscale with output-selector `<select id="scatter-color-col">` above the chart. Dropdown wired client-side: `Plotly.react()` updates `data[0].marker.color` and colorbar title from `result.scatter_color_data` (per-output value arrays returned by the pipeline).
+- `plot_bgcolor="rgba(255,255,255,0.04)"` — barely-visible white tint anchors the Plasma scale against the dark page; prevents low-value markers from vanishing.
+- `marker_size=4, marker_opacity=0.65` — reduces overplotting on dense datasets.
+- Gridlines: `gridwidth=0.5, gridcolor="rgba(180,180,200,0.15)", zeroline=False`; axis font size 10.
+
+**Issue 8 — Uncertainty map axis dropdowns (bug fix)**
+- Root cause: `unc-xaxis` / `unc-yaxis` dropdowns had no change listeners — changing them did nothing.
+- Fix: `POST /uncertainty_map` endpoint added to `app.py` following the `/predict_row` pattern. Validates axis names against `surrogate.input_cols`; retrieves cached `_surrogate` and `_bounds` from the job store; calls `_uncertainty_heatmap_json()` and returns chart JSON.
+- `_bounds` now stored in `_jobs[job_id]["_bounds"]` (popped from result like `_surrogate`).
+- `refreshUncertaintyMap()` in `main.js` uses `AbortController` to cancel in-flight requests on rapid dropdown changes. Dropdowns disabled when only one input column is configured.
+
 ---
 
 ## Dependencies
@@ -264,7 +303,7 @@ ParametricOptimizationDriver/
 flask
 numpy
 pandas
-scikit-learn
+scikit-learn   # includes joblib (used directly for parallel GP fitting)
 scipy
 plotly
 gitpython
