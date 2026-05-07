@@ -115,16 +115,16 @@ def sobol_chart_json(
         barmode="group",
         xaxis_title="Input variable",
         yaxis_title="First-order Sobol index S₁",
-        yaxis_range=[0, 1.05],
+        yaxis_range=[0, 1.2],
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font_color="#e4e4f0",
         legend=dict(orientation="h", y=-0.2, xanchor="center", x=0.5, yanchor="top"),
-        margin=dict(l=50, r=20, t=40, b=80),
+        margin=dict(l=50, r=20, t=40, b=100),
         height=280,
         hoverlabel=dict(bgcolor="#1e1e3a", font=dict(color="#e4e4f0", size=12), bordercolor="#4a4a7a"),
     )
-    fig.update_xaxes(gridcolor="#2e2e52")
-    fig.update_yaxes(gridcolor="#2e2e52")
+    fig.update_xaxes(gridcolor="#2e2e52", automargin=True)
+    fig.update_yaxes(gridcolor="#2e2e52", automargin=True)
 
     return json.loads(fig.to_json())

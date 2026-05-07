@@ -753,6 +753,7 @@ function getInputConstraints() {
 // Validation
 // ─────────────────────────────────────────────────────────────────────────────
 function validateConfig() {
+  if (STATE.numericColumns.length === 0) { renderValidationErrors([]); return; }
   _clearFieldErrors();
   const errors = [];
   const { inputs, outputs, bounds, integerCols } = getColumnConfig();
@@ -1147,7 +1148,11 @@ async function refreshUncertaintyMap() {
       body: JSON.stringify({ job_id: STATE.jobId, x_axis: xAxis, y_axis: yAxis }),
       signal: _uncMapAbortCtrl.signal,
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast('warning', 'Uncertainty map', err.error || `Server error ${res.status}`);
+      return;
+    }
     const data = await res.json();
     Plotly.react('chart-uncertainty-plot', data.chart.data,
       applyTheme(data.chart.layout), { responsive: true });
@@ -1201,6 +1206,20 @@ function renderCharts(plots, uncAxes) {
       }
       Plotly.react('chart-scatter-plot', updatedData, applyTheme(updatedLayout), plotCfg);
     };
+
+    // Marker size slider
+    const sizeSlider = el('scatter-marker-size');
+    if (sizeSlider) {
+      sizeSlider.value = '6';
+      sizeSlider.oninput = () => {
+        const sz = parseInt(sizeSlider.value);
+        const div = document.getElementById('chart-scatter-plot');
+        if (!div || !div.data) return;
+        Plotly.react('chart-scatter-plot',
+          div.data.map(t => ({ ...t, marker: { ...t.marker, size: sz } })),
+          applyTheme(plots.scatter_matrix.layout), plotCfg);
+      };
+    }
   }
 
   if (plots.uncertainty_map) {

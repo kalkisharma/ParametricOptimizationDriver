@@ -238,7 +238,7 @@ def _scatter_matrix_json(
             color_discrete_sequence=["#5b8ef7"],
         )
 
-    fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=4, marker_opacity=0.65)
+    fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=6, marker_opacity=0.65)
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(255,255,255,0.04)",
