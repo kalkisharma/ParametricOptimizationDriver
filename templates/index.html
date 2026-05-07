@@ -264,10 +264,10 @@
 
       <!-- Advanced GP settings -->
       <details class="advanced card" style="padding:0">
-        <summary>Advanced GP Settings</summary>
+        <summary data-tip="Controls how the Gaussian Process is configured. The defaults work well for most datasets — only adjust if LOO diagnostics are poor.">Advanced GP Settings</summary>
         <div class="advanced-body">
           <div class="form-group" style="max-width:200px">
-            <label for="gp-kernel">Kernel override</label>
+            <label for="gp-kernel" data-tip="The covariance function. Auto fits both Matérn 5/2 and RBF and picks the one with lower LOO error. Matérn 5/2 is a good default for smooth engineering simulations. RBF assumes infinitely smooth functions.">Kernel override</label>
             <select id="gp-kernel">
               <option value="auto">Auto (cross-validation)</option>
               <option value="matern52">Matérn 5/2</option>
@@ -275,19 +275,33 @@
             </select>
           </div>
           <div class="form-group" style="max-width:160px">
-            <label for="gp-restarts">Optimizer restarts</label>
+            <label for="gp-restarts" data-tip="How many random starting points the hyperparameter optimizer uses. More restarts reduce the chance of settling in a local optimum but increase fitting time. Default 5 is sufficient for datasets under ~200 rows.">Optimizer restarts</label>
             <input type="number" id="gp-restarts" value="5" min="1" max="30">
           </div>
           <div class="form-group" style="max-width:200px">
-            <label for="gp-lengthscale">Length scale type</label>
+            <label for="gp-lengthscale" data-tip="Anisotropic: each input gets its own length-scale — the GP can learn that some inputs matter more than others. Isotropic: all inputs share one length-scale. Use anisotropic when inputs have different physical scales or importances.">Length scale type</label>
             <select id="gp-lengthscale">
               <option value="anisotropic">Anisotropic (per input)</option>
               <option value="isotropic">Isotropic (shared)</option>
             </select>
           </div>
           <div class="form-group" style="max-width:220px">
-            <label for="dup-threshold">Duplicate filter distance (0–1)</label>
+            <label for="dup-threshold" data-tip="Minimum normalised distance between two suggested points. Prevents the optimizer from returning near-identical candidates in a batch. Reduce to allow closer suggestions; increase to force more diversity.">Duplicate filter distance (0–1)</label>
             <input type="number" id="dup-threshold" value="0.01" min="0" max="0.5" step="0.001">
+          </div>
+          <div class="form-group" style="max-width:220px; flex-basis:100%">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"
+              data-tip="Run GP fitting for multiple outputs in parallel using threads. Keep off on shared HPC head nodes — parallel fitting consumes all available cores and impacts other users.">
+              <input type="checkbox" id="gp-parallel"> Parallel GP fitting
+            </label>
+            <div id="parallel-workers-row" style="display:none;margin-top:6px;gap:8px;align-items:center" class="flex">
+              <span id="cpu-count-label" class="text-muted"></span>
+              <label for="gp-max-workers" style="margin:0">Max workers</label>
+              <input type="number" id="gp-max-workers" value="1" min="1" step="1" style="width:60px">
+            </div>
+            <div id="parallel-hpc-warning" style="display:none;margin-top:4px;font-size:11px;color:var(--warning)">
+              ⚠ Running on an HPC head node? Keep workers at 1 or use serial mode to avoid impacting other users.
+            </div>
           </div>
         </div>
       </details>
@@ -351,7 +365,12 @@
           <div id="chart-convergence-plot" style="min-height:260px"></div>
         </div>
         <div class="card chart-card wide" id="chart-scatter">
-          <div class="card-title"><span data-tip="Pairwise scatter plots of all input and output columns. Colour = GP predicted output value at that point. Click any point to inspect its full row.">Scatter Matrix</span></div>
+          <div class="card-title" style="display:flex; align-items:center; justify-content:space-between">
+            <span data-tip="Pairwise scatter plots of all input and output columns. Colour = selected output value (Plasma scale). Click any point to inspect its full row.">Scatter Matrix</span>
+            <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted)">
+              Color by <select id="scatter-color-col" style="font-size:12px; width:150px"></select>
+            </div>
+          </div>
           <div id="chart-scatter-plot" style="min-height:400px"></div>
         </div>
         <div class="card chart-card wide" id="chart-uncertainty">

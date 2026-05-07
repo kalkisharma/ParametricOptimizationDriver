@@ -403,13 +403,20 @@ input.error, select.error { border-color: var(--danger); }
 /* --- Bounds row within column card --- */
 .bounds-row {
   display: flex;
-  gap: 6px;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
   margin-top: 4px;
 }
 
-.bounds-row label { min-width: 28px; }
-.bounds-row input { flex: 1; min-width: 60px; }
+.bound-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bound-field label { min-width: 28px; }
+.bound-field input { flex: 1; min-width: 60px; }
 
 /* --- Constraint builder --- */
 .constraint-row {
@@ -848,7 +855,7 @@ input.has-error, select.has-error { border-color: var(--danger) !important; }
 #tooltip-box {
   position: fixed;
   z-index: 9999;
-  max-width: 280px;
+  max-width: 320px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 6px;

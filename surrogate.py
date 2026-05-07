@@ -16,6 +16,7 @@ Kernel auto-selected (Matérn 5/2 vs RBF) via leave-one-out cross-validation RMS
 """
 
 import numpy as np
+from joblib import Parallel, delayed
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import (
     RBF,
@@ -94,6 +95,48 @@ def _loo_r2(gpr: GaussianProcessRegressor, X: np.ndarray, y: np.ndarray) -> floa
         return 0.0
 
 
+def _fit_single_output(
+    col: str,
+    col_idx: int,
+    X_scaled: np.ndarray,
+    Y: np.ndarray,
+    n_features: int,
+    kernel_choice: str,
+    n_restarts: int,
+    anisotropic: bool,
+):
+    """Fit GP for one output column. Thread-safe: all state is local."""
+    y = Y[:, col_idx]
+    scaler = StandardScaler()
+    y_scaled = scaler.fit_transform(y.reshape(-1, 1)).ravel()
+
+    best_gp, best_rmse, best_kernel_name = None, np.inf, "matern52"
+    candidates = ["matern52", "rbf"] if kernel_choice == "auto" else [kernel_choice]
+    for kname in candidates:
+        kern = _make_kernel(kname, n_features, anisotropic)
+        gpr = GaussianProcessRegressor(
+            kernel=kern,
+            alpha=1e-10,
+            normalize_y=False,
+            n_restarts_optimizer=n_restarts,
+        )
+        gpr.fit(X_scaled, y_scaled)
+        rmse = _loo_rmse(gpr, X_scaled, y_scaled)
+        if rmse < best_rmse:
+            best_rmse = rmse
+            best_gp = gpr
+            best_kernel_name = kname
+
+    y_std = float(scaler.scale_[0]) if scaler.scale_ is not None else 1.0
+    r2 = _loo_r2(best_gp, X_scaled, y_scaled)
+    diagnostics = {
+        "r2": round(r2, 4),
+        "rmse": round(best_rmse * y_std, 6),
+        "kernel": best_kernel_name,
+    }
+    return col, best_gp, best_kernel_name, diagnostics, scaler
+
+
 class SurrogateModel:
     """
     Fits one GP per output column. Supports:
@@ -132,58 +175,35 @@ class SurrogateModel:
         Y: np.ndarray,
         input_cols: list[str],
         output_cols: list[str],
+        n_jobs: int = 1,
     ) -> "SurrogateModel":
         """
         Fit one GP per output column.
 
         X: (n_samples, n_inputs)  — raw input values
         Y: (n_samples, n_outputs) — raw output values
+        n_jobs: parallel workers (prefer="threads"; safe because sklearn BLAS releases the GIL)
         """
         self.input_cols = input_cols
         self.output_cols = output_cols
         n_features = X.shape[1]
 
+        # X scaler is fit once (read-only during parallel section)
         X_scaled = self._x_scaler.fit_transform(X)
 
-        for i, col in enumerate(output_cols):
-            y = Y[:, i]
-            scaler = StandardScaler()
-            y_scaled = scaler.fit_transform(y.reshape(-1, 1)).ravel()
-            self._y_scalers[col] = scaler
-
-            kernel_choice = self.kernel
-            best_gp, best_rmse, best_kernel_name = None, np.inf, "matern52"
-
-            candidates = (
-                ["matern52", "rbf"] if kernel_choice == "auto" else [kernel_choice]
+        results = Parallel(n_jobs=n_jobs, prefer="threads")(
+            delayed(_fit_single_output)(
+                col, i, X_scaled, Y, n_features,
+                self.kernel, self.n_restarts, self.anisotropic,
             )
-            for kname in candidates:
-                kern = _make_kernel(kname, n_features, self.anisotropic)
-                gpr = GaussianProcessRegressor(
-                    kernel=kern,
-                    alpha=1e-10,
-                    normalize_y=False,
-                    n_restarts_optimizer=self.n_restarts,
-                )
-                gpr.fit(X_scaled, y_scaled)
-                rmse = _loo_rmse(gpr, X_scaled, y_scaled)
-                if rmse < best_rmse:
-                    best_rmse = rmse
-                    best_gp = gpr
-                    best_kernel_name = kname
+            for i, col in enumerate(output_cols)
+        )
 
-            self._gps[col] = best_gp
-            self._kernel_used[col] = best_kernel_name
-
-            # LOO diagnostics in original scale
-            y_std = float(scaler.scale_[0]) if scaler.scale_ is not None else 1.0
-            rmse_orig = best_rmse * y_std
-            r2 = _loo_r2(best_gp, X_scaled, y_scaled)
-            self._diagnostics[col] = {
-                "r2": round(r2, 4),
-                "rmse": round(rmse_orig, 6),
-                "kernel": best_kernel_name,
-            }
+        for col, gp, kernel_name, diagnostics, y_scaler in results:
+            self._gps[col] = gp
+            self._kernel_used[col] = kernel_name
+            self._diagnostics[col] = diagnostics
+            self._y_scalers[col] = y_scaler
 
         self._fitted = True
         return self

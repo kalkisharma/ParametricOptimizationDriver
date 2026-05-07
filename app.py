@@ -207,11 +207,13 @@ def _run_pipeline(df, config, msg_queue, job_id):
     else:
         result = run_optimization(df, config, emit)
 
-    # Store surrogate separately — never put it back into result (dict is passed by reference
+    # Store surrogate and bounds separately — never leave them in result (dict is passed by reference
     # into the SSE queue and json.dumps would see the mutation before serialising).
     surrogate_obj = result.pop("_surrogate", None)
+    bounds_obj = result.pop("_bounds", None)
     _jobs[job_id]["result"] = result
-    _jobs[job_id]["_surrogate"] = surrogate_obj  # separate key, never touches result dict
+    _jobs[job_id]["_surrogate"] = surrogate_obj
+    _jobs[job_id]["_bounds"] = bounds_obj
     emit("result", "Pipeline complete", data=result)
 
 
@@ -294,6 +296,49 @@ def predict_row():
         predictions[f"pred_{col}_upper"] = round(mu + 2 * sigma, 6)
 
     return jsonify({"predictions": predictions})
+
+
+# ---------------------------------------------------------------------------
+# Uncertainty map — re-render with new axis selection
+# ---------------------------------------------------------------------------
+
+@app.route("/uncertainty_map", methods=["POST"])
+def uncertainty_map():
+    from optimization import _uncertainty_heatmap_json
+    payload = request.get_json(force=True)
+    job_id = payload.get("job_id")
+    x_axis = payload.get("x_axis")
+    y_axis = payload.get("y_axis")
+
+    if not job_id or not x_axis or not y_axis:
+        return jsonify({"error": "job_id, x_axis, and y_axis are required"}), 400
+
+    job = _jobs.get(job_id)
+    if not job or not job.get("result"):
+        return jsonify({"error": "No result for this job"}), 404
+
+    surrogate = job.get("_surrogate")
+    if surrogate is None:
+        return jsonify({"error": "Surrogate not cached for this job"}), 404
+
+    bounds = job.get("_bounds")
+    if bounds is None:
+        return jsonify({"error": "Bounds not cached for this job"}), 404
+
+    if x_axis not in surrogate.input_cols or y_axis not in surrogate.input_cols:
+        return jsonify({"error": f"Axis must be an input column: {surrogate.input_cols}"}), 400
+
+    chart = _uncertainty_heatmap_json(surrogate, bounds, x_axis, y_axis)
+    return jsonify({"chart": chart})
+
+
+# ---------------------------------------------------------------------------
+# System info — cpu_count for parallel UI
+# ---------------------------------------------------------------------------
+
+@app.route("/system_info")
+def system_info():
+    return jsonify({"cpu_count": os.cpu_count() or 1})
 
 
 # ---------------------------------------------------------------------------

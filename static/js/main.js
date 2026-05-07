@@ -143,10 +143,16 @@ el('theme-toggle').onclick = () => {
   const isDark = html.getAttribute('data-theme') === 'dark';
   html.setAttribute('data-theme', isDark ? 'light' : 'dark');
   el('theme-toggle').textContent = isDark ? '🌙' : '☀️';
-  // Swap Plotly chart templates if charts are rendered
+  // Re-apply theme colours to all rendered Plotly charts
+  const newFontColor = isDark ? '#1a1a2e' : '#e4e4f0';
+  const newGridColor = isDark ? '#d0d4e8' : '#2e2e52';
   $$('.js-plotly-plot').forEach(div => {
-    if (div._fullData) {
-      Plotly.relayout(div, { template: isDark ? 'plotly' : 'plotly_white' });
+    if (div.data) {
+      Plotly.relayout(div, {
+        'font.color': newFontColor,
+        'xaxis.gridcolor': newGridColor,
+        'yaxis.gridcolor': newGridColor,
+      });
     }
   });
 };
@@ -445,7 +451,7 @@ function buildColumnAssignment() {
       <div class="form-row" style="margin:6px 0 0">
         <select class="col-role" style="flex:1"
           data-tip="Input: the optimizer suggests values within bounds. Output: the GP surrogate learns to predict it. Ignore: excluded from the model.">
-          <option value="input">Input</option>
+          <option value="input" selected>Input</option>
           <option value="output">Output</option>
           <option value="ignore">Ignore</option>
         </select>
@@ -455,10 +461,14 @@ function buildColumnAssignment() {
         </label>
       </div>
       <div class="bounds-row col-bounds">
-        <label data-tip="The optimizer will never suggest values outside these bounds. Pre-filled from your data range — widen them if you want to explore beyond your current data.">Min</label>
-        <input type="number" class="col-min" value="${s.min?.toFixed(4)??0}" step="any">
-        <label data-tip="The optimizer will never suggest values outside these bounds. Pre-filled from your data range — widen them if you want to explore beyond your current data.">Max</label>
-        <input type="number" class="col-max" value="${s.max?.toFixed(4)??1}" step="any">
+        <div class="bound-field">
+          <label data-tip="The optimizer will never suggest values outside these bounds. Pre-filled from your data range — widen them if you want to explore beyond your current data.">Min</label>
+          <input type="number" class="col-min" value="${s.min?.toFixed(4)??0}" step="any">
+        </div>
+        <div class="bound-field">
+          <label data-tip="The optimizer will never suggest values outside these bounds. Pre-filled from your data range — widen them if you want to explore beyond your current data.">Max</label>
+          <input type="number" class="col-max" value="${s.max?.toFixed(4)??1}" step="any">
+        </div>
       </div>`;
     // Show/hide bounds based on role
     const roleSelect = card.querySelector('.col-role');
@@ -893,6 +903,11 @@ function applyConfig(cfg) {
   }
   if (cfg.dup_threshold) el('dup-threshold').value = cfg.dup_threshold;
   if (cfg.convergence_threshold) el('convergence-threshold').value = cfg.convergence_threshold;
+  if (el('gp-parallel') && cfg.parallel !== undefined) {
+    el('gp-parallel').checked = cfg.parallel;
+    el('gp-parallel').dispatchEvent(new Event('change'));
+  }
+  if (el('gp-max-workers') && cfg.max_workers) el('gp-max-workers').value = cfg.max_workers;
   populateObjectiveSelects();
   validateConfig();
 }
@@ -926,6 +941,8 @@ function buildRunPayload() {
     },
     dup_threshold: parseFloat(el('dup-threshold').value),
     convergence_threshold: parseFloat(el('convergence-threshold').value),
+    parallel: el('gp-parallel')?.checked ?? false,
+    max_workers: parseInt(el('gp-max-workers')?.value ?? '1') || 1,
   };
   STATE.lastPayload = payload;
   return payload;
@@ -1106,18 +1123,40 @@ function renderDiagnostics(diag) {
   }).join('');
 }
 
-function renderCharts(plots, uncAxes) {
+function applyTheme(layout) {
   const theme = document.documentElement.getAttribute('data-theme') === 'light';
   const bgColor = 'rgba(0,0,0,0)';
   const fontColor = theme ? '#1a1a2e' : '#e4e4f0';
   const gridColor = theme ? '#d0d4e8' : '#2e2e52';
+  return { ...layout, paper_bgcolor: bgColor, plot_bgcolor: bgColor,
+           font: { color: fontColor }, xaxis: { ...layout.xaxis, gridcolor: gridColor },
+           yaxis: { ...layout.yaxis, gridcolor: gridColor } };
+}
 
-  function applyTheme(layout) {
-    return { ...layout, paper_bgcolor: bgColor, plot_bgcolor: bgColor,
-             font: { color: fontColor }, xaxis: { ...layout.xaxis, gridcolor: gridColor },
-             yaxis: { ...layout.yaxis, gridcolor: gridColor } };
+let _uncMapAbortCtrl = null;
+
+async function refreshUncertaintyMap() {
+  if (_uncMapAbortCtrl) _uncMapAbortCtrl.abort();
+  _uncMapAbortCtrl = new AbortController();
+  const xAxis = el('unc-xaxis').value;
+  const yAxis = el('unc-yaxis').value;
+  try {
+    const res = await fetch('/uncertainty_map', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: STATE.jobId, x_axis: xAxis, y_axis: yAxis }),
+      signal: _uncMapAbortCtrl.signal,
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    Plotly.react('chart-uncertainty-plot', data.chart.data,
+      applyTheme(data.chart.layout), { responsive: true });
+  } catch (e) {
+    if (e.name !== 'AbortError') toast('warning', 'Uncertainty map update failed', e.message);
   }
+}
 
+function renderCharts(plots, uncAxes) {
   const plotCfg = {responsive: true};
 
   if (plots.sensitivity) {
@@ -1135,11 +1174,33 @@ function renderCharts(plots, uncAxes) {
   if (plots.scatter_matrix) {
     Plotly.react('chart-scatter-plot', plots.scatter_matrix.data,
       applyTheme(plots.scatter_matrix.layout), plotCfg);
-    // Click handler for row sidebar
     el('chart-scatter-plot').on('plotly_click', data => {
       const pt = data.points[0];
       if (pt && STATE.lastResult) showRowSidebar({ x: pt.x, y: pt.y, index: pt.pointIndex });
     });
+
+    // Populate and wire scatter color dropdown
+    const colorData = STATE.lastResult?.scatter_color_data || {};
+    const outputCols = Object.keys(colorData);
+    const colorSel = el('scatter-color-col');
+    colorSel.innerHTML = outputCols.map(c => `<option value="${c}">${c}</option>`).join('');
+    colorSel.disabled = outputCols.length === 0;
+    colorSel.onchange = () => {
+      const selected = colorSel.value;
+      const vals = colorData[selected];
+      if (!vals || !plots.scatter_matrix.data[0]) return;
+      const updatedData = plots.scatter_matrix.data.map((t, i) =>
+        i === 0 ? { ...t, marker: { ...t.marker, color: vals } } : t
+      );
+      const updatedLayout = { ...plots.scatter_matrix.layout };
+      if (updatedLayout.coloraxis) {
+        updatedLayout.coloraxis = {
+          ...updatedLayout.coloraxis,
+          colorbar: { ...(updatedLayout.coloraxis.colorbar || {}), title: { text: selected } },
+        };
+      }
+      Plotly.react('chart-scatter-plot', updatedData, applyTheme(updatedLayout), plotCfg);
+    };
   }
 
   if (plots.uncertainty_map) {
@@ -1151,11 +1212,14 @@ function renderCharts(plots, uncAxes) {
     });
   }
 
-  // Populate axis selectors for uncertainty map
+  // Populate and wire axis selectors for uncertainty map
   const inputCols = buildRunPayload().input_cols;
+  const hasMultipleInputs = inputCols.length >= 2;
   [el('unc-xaxis'), el('unc-yaxis')].forEach((sel, idx) => {
     sel.innerHTML = inputCols.map(c => `<option value="${c}">${c}</option>`).join('');
     if (inputCols[idx]) sel.value = inputCols[idx];
+    sel.disabled = !hasMultipleInputs;
+    sel.onchange = refreshUncertaintyMap;
   });
 }
 
@@ -1263,7 +1327,35 @@ function downloadBlob(content, mimeType, filename) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Init
 // ─────────────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   validateConfig();
   goToStep(1);
+
+  // Wire parallel checkbox
+  const parallelCb = el('gp-parallel');
+  const workersRow = el('parallel-workers-row');
+  const hpcWarning = el('parallel-hpc-warning');
+  if (parallelCb) {
+    parallelCb.addEventListener('change', () => {
+      const on = parallelCb.checked;
+      workersRow.style.display = on ? 'flex' : 'none';
+      hpcWarning.style.display = on ? 'block' : 'none';
+    });
+  }
+
+  // Fetch cpu_count and populate parallel UI defaults
+  try {
+    const res = await fetch('/system_info');
+    if (res.ok) {
+      const info = await res.json();
+      const cpuCount = info.cpu_count || 1;
+      const countLabel = el('cpu-count-label');
+      if (countLabel) countLabel.textContent = `${cpuCount} core${cpuCount !== 1 ? 's' : ''} available`;
+      const maxWorkersEl = el('gp-max-workers');
+      if (maxWorkersEl) {
+        maxWorkersEl.max = cpuCount;
+        maxWorkersEl.value = Math.min(cpuCount, 4);
+      }
+    }
+  } catch (_) { /* system_info is best-effort */ }
 });

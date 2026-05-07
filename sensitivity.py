@@ -1,7 +1,7 @@
 # =============================================================================
 # sensitivity.py
 # Parametric Optimization Driver
-# Version: v1.1.2
+# Version: v1.1.7
 # Role: Scientific Python Developer
 # Last modified: 2026-05-06
 # Description: First-order Sobol sensitivity indices via GP-surrogate Monte Carlo
@@ -18,6 +18,7 @@ import json
 
 import numpy as np
 import plotly.graph_objects as go
+from joblib import Parallel, delayed
 
 from surrogate import SurrogateModel
 
@@ -62,15 +63,17 @@ def sobol_first_order(
     if var_total < 1e-12:
         return {col: 0.0 for col in surrogate.input_cols}
 
+    # Vectorized: stack all AB_i matrices and predict in a single call
+    # avoids n_inputs separate GP predict calls.
+    AB_stack = np.tile(A, (n_inputs, 1))  # shape (n_inputs * n_samples, n_inputs)
+    for i in range(n_inputs):
+        AB_stack[i * n_samples:(i + 1) * n_samples, i] = B[:, i]
+    f_AB_all = surrogate.predict(AB_stack)[:, col_idx].reshape(n_inputs, n_samples)
+
     s1 = {}
     for i, col in enumerate(surrogate.input_cols):
-        # A_B(i): matrix A with column i replaced by B's column i
-        AB_i = A.copy()
-        AB_i[:, i] = B[:, i]
-        f_AB_i = surrogate.predict(AB_i)[:, col_idx]
-
         # Saltelli estimator: S1_i = (1/n) * sum(f_B * (f_AB_i - f_A)) / Var
-        s1_raw = float(np.mean(yB * (f_AB_i - yA)) / var_total)
+        s1_raw = float(np.mean(yB * (f_AB_all[i] - yA)) / var_total)
         s1[col] = max(0.0, s1_raw)  # clip negative values (estimation noise)
 
     return s1
@@ -80,6 +83,7 @@ def sobol_chart_json(
     surrogate: SurrogateModel,
     bounds: list[tuple[float, float]],
     n_samples: int = 1024,
+    n_jobs: int = 1,
 ) -> dict:
     """
     Compute Sobol S1 for all output columns and return a Plotly bar chart JSON
@@ -88,9 +92,13 @@ def sobol_chart_json(
     input_cols = surrogate.input_cols
     output_cols = surrogate.output_cols
 
+    s1_results = Parallel(n_jobs=n_jobs, prefer="threads")(
+        delayed(sobol_first_order)(surrogate, bounds, out_col, n_samples)
+        for out_col in output_cols
+    )
+
     traces = []
-    for out_col in output_cols:
-        s1 = sobol_first_order(surrogate, bounds, out_col, n_samples)
+    for out_col, s1 in zip(output_cols, s1_results):
         traces.append(
             go.Bar(
                 name=out_col,
@@ -98,6 +106,7 @@ def sobol_chart_json(
                 y=[s1.get(c, 0.0) for c in input_cols],
                 text=[f"{s1.get(c, 0.0):.3f}" for c in input_cols],
                 textposition="outside",
+                hovertemplate="%{x}: S₁ = %{y:.3f}<extra>%{fullData.name}</extra>",
             )
         )
 
@@ -110,8 +119,8 @@ def sobol_chart_json(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font_color="#e4e4f0",
-        legend=dict(orientation="h", y=1.1),
-        margin=dict(l=50, r=20, t=40, b=50),
+        legend=dict(orientation="h", y=-0.2, xanchor="center", x=0.5, yanchor="top"),
+        margin=dict(l=50, r=20, t=40, b=80),
         height=280,
         hoverlabel=dict(bgcolor="#1e1e3a", font=dict(color="#e4e4f0", size=12), bordercolor="#4a4a7a"),
     )

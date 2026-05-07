@@ -140,9 +140,12 @@ def _fit_surrogate(
     gp_settings: dict,
     emit: Callable,
     total_steps: int = 6,
+    n_jobs: int = 1,
 ) -> SurrogateModel:
-    """Fit a SurrogateModel on df, emitting per-output SSE progress messages."""
-    emit("progress", f"Fitting surrogate (0/{len(output_cols)} outputs)…", step=2, total=total_steps)
+    """Fit a SurrogateModel on df."""
+    n = len(output_cols)
+    emit("progress", f"Fitting GP model{'s' if n > 1 else ''} ({n} output{'s' if n > 1 else ''})…",
+         step=2, total=total_steps)
 
     X = df[input_cols].values.astype(float)
     Y = df[output_cols].values.astype(float)
@@ -152,13 +155,7 @@ def _fit_surrogate(
         n_restarts=gp_settings["n_restarts"],
         anisotropic=gp_settings["anisotropic"],
     )
-
-    # Fit per-output, emitting progress
-    for i, col in enumerate(output_cols):
-        emit("progress", f"Fitting GP for '{col}' ({i+1}/{len(output_cols)})…",
-             step=2, total=total_steps)
-
-    surrogate.fit(X, Y, input_cols, output_cols)
+    surrogate.fit(X, Y, input_cols, output_cols, n_jobs=n_jobs)
     return surrogate
 
 
@@ -212,26 +209,46 @@ def _build_suggestion_records(
 # Plot builders
 # ---------------------------------------------------------------------------
 
-def _scatter_matrix_json(df: pd.DataFrame, input_cols: list[str], output_cols: list[str]) -> dict:
+def _scatter_matrix_json(
+    df: pd.DataFrame,
+    input_cols: list[str],
+    output_cols: list[str],
+    color_col: str | None = None,
+) -> dict:
     """Return Plotly scatter-matrix JSON for all input+output columns (capped at 8 for readability)."""
     all_cols = input_cols + output_cols
-    cols_to_plot = all_cols[:min(len(all_cols), 8)]  # cap for readability
+    cols_to_plot = all_cols[:min(len(all_cols), 8)]
+    cols_to_plot_df = df[cols_to_plot]
     n = len(cols_to_plot)
-    fig = px.scatter_matrix(
-        df[cols_to_plot],
-        dimensions=cols_to_plot,
-        color_discrete_sequence=["#5b8ef7"],
-        template="plotly",
-    )
-    fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=6)
+
+    effective_color = color_col if (color_col and color_col in cols_to_plot_df.columns) else None
+
+    if effective_color:
+        fig = px.scatter_matrix(
+            cols_to_plot_df,
+            dimensions=cols_to_plot,
+            color=cols_to_plot_df[effective_color],
+            color_continuous_scale="Plasma",
+        )
+        fig.update_coloraxes(colorbar_title_text=effective_color, colorbar_thickness=12)
+    else:
+        fig = px.scatter_matrix(
+            cols_to_plot_df,
+            dimensions=cols_to_plot,
+            color_discrete_sequence=["#5b8ef7"],
+        )
+
+    fig.update_traces(diagonal_visible=False, showupperhalf=False, marker_size=4, marker_opacity=0.65)
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#e4e4f0", size=11),
+        plot_bgcolor="rgba(255,255,255,0.04)",
+        font=dict(color="#e4e4f0", size=10),
         height=max(500, n * 120),
         margin=dict(l=80, r=20, t=40, b=80),
         hoverlabel=dict(bgcolor="#1e1e3a", font=dict(color="#e4e4f0", size=12), bordercolor="#4a4a7a"),
     )
+    fig.update_xaxes(gridwidth=0.5, gridcolor="rgba(180,180,200,0.15)", zeroline=False)
+    fig.update_yaxes(gridwidth=0.5, gridcolor="rgba(180,180,200,0.15)", zeroline=False)
     return json.loads(fig.to_json())
 
 
@@ -414,10 +431,14 @@ def run_refinement(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
             f"Not enough data after cleaning: {len(df_clean)} rows (need at least {min_rows})."
         )
 
-    surrogate = _fit_surrogate(df_clean, input_cols, output_cols, gp_settings, emit)
+    n_jobs = 1
+    if config.get("parallel") and len(output_cols) > 1:
+        n_jobs = max(1, min(int(config.get("max_workers", 1)), len(output_cols)))
+
+    surrogate = _fit_surrogate(df_clean, input_cols, output_cols, gp_settings, emit, n_jobs=n_jobs)
 
     emit("progress", "Computing sensitivity indices…", step=3, total=6)
-    sobol_chart = sobol_chart_json(surrogate, bounds)
+    sobol_chart = sobol_chart_json(surrogate, bounds, n_jobs=n_jobs)
 
     emit("progress", "Running MaxVariance acquisition…", step=4, total=6)
     X_train = df_clean[input_cols].values.astype(float)
@@ -437,8 +458,10 @@ def run_refinement(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
     emit("progress", "Building charts…", step=5, total=6)
     x_ax = input_cols[0]
     y_ax = input_cols[1] if len(input_cols) > 1 else input_cols[0]
+    first_out = output_cols[0] if output_cols else None
+    scatter_color_data = {col: df_clean[col].tolist() for col in output_cols if col in df_clean.columns}
     plots = {
-        "scatter_matrix": _scatter_matrix_json(df_clean, input_cols, output_cols),
+        "scatter_matrix": _scatter_matrix_json(df_clean, input_cols, output_cols, color_col=first_out),
         "uncertainty_map": _uncertainty_heatmap_json(surrogate, bounds, x_ax, y_ax),
         "sensitivity": sobol_chart,
     }
@@ -452,7 +475,9 @@ def run_refinement(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
         "mode": "refinement",
         "convergence": None,
         "unc_axes": {"x": x_ax, "y": y_ax},
+        "scatter_color_data": scatter_color_data,
         "_surrogate": surrogate,
+        "_bounds": bounds,
     }
 
 
@@ -501,10 +526,14 @@ def run_optimization(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
             f"Not enough data after cleaning: {len(df_clean)} rows (need at least {min_rows})."
         )
 
-    surrogate = _fit_surrogate(df_clean, input_cols, output_cols, gp_settings, emit)
+    n_jobs = 1
+    if config.get("parallel") and len(output_cols) > 1:
+        n_jobs = max(1, min(int(config.get("max_workers", 1)), len(output_cols)))
+
+    surrogate = _fit_surrogate(df_clean, input_cols, output_cols, gp_settings, emit, n_jobs=n_jobs)
 
     emit("progress", "Computing sensitivity indices…", step=3, total=6)
-    sobol_chart = sobol_chart_json(surrogate, bounds)
+    sobol_chart = sobol_chart_json(surrogate, bounds, n_jobs=n_jobs)
 
     X_train = df_clean[input_cols].values.astype(float)
     Y_train = df_clean[output_cols].values.astype(float)
@@ -548,8 +577,10 @@ def run_optimization(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
     emit("progress", "Building charts…", step=5, total=6)
     x_ax = input_cols[0]
     y_ax = input_cols[1] if len(input_cols) > 1 else input_cols[0]
+    first_out = output_cols[0] if output_cols else None
+    scatter_color_data = {col: df_clean[col].tolist() for col in output_cols if col in df_clean.columns}
     plots = {
-        "scatter_matrix": _scatter_matrix_json(df_clean, input_cols, output_cols),
+        "scatter_matrix": _scatter_matrix_json(df_clean, input_cols, output_cols, color_col=first_out),
         "uncertainty_map": _uncertainty_heatmap_json(surrogate, bounds, x_ax, y_ax),
         "sensitivity": sobol_chart,
         "convergence": _convergence_chart_json(
@@ -571,5 +602,7 @@ def run_optimization(df: pd.DataFrame, config: dict, emit: Callable) -> dict:
             "converged": converged,
         },
         "unc_axes": {"x": x_ax, "y": y_ax},
+        "scatter_color_data": scatter_color_data,
         "_surrogate": surrogate,
+        "_bounds": bounds,
     }
